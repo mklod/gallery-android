@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#FF000000">
+
+    <RelativeLayout
+        android:id="@+id/dir_holder"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?attr/selectableItemBackground"
+        android:minHeight="64dp"
+        android:paddingStart="20dp"
+        android:paddingTop="14dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="14dp">
+
+        <org.fossify.commons.views.MySquareImageView
+            android:id="@+id/dir_thumbnail"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_centerVertical="true"
+            android:scaleType="centerCrop"
+            android:visibility="visible" />
+
+        <ImageView
+            android:id="@+id/dir_lock"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_centerVertical="true"
+            android:background="@color/default_background_color"
+            android:contentDescription="@string/lock_folder"
+            android:padding="@dimen/medium_margin"
+            android:src="@drawable/ic_lock_vector"
+            android:visibility="gone" />
+
+        <ImageView
+            android:id="@+id/dir_check"
+            android:layout_width="@dimen/selection_check_size"
+            android:layout_height="@dimen/selection_check_size"
+            android:layout_alignParentTop="true"
+            android:layout_alignParentEnd="true"
+            android:background="@drawable/circle_background"
+            android:contentDescription="@null"
+            android:padding="@dimen/tiny_margin"
+            android:src="@drawable/ic_check_vector"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/dir_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_centerVertical="true"
+            android:layout_marginStart="16dp"
+            android:layout_toEndOf="@+id/dir_thumbnail"
+            android:layout_toStartOf="@+id/photo_cnt"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif"
+            android:maxLines="1"
+            android:textColor="#FFFFFFFF"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/dir_path"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/dir_name"
+            android:layout_alignStart="@+id/dir_name"
+            android:layout_toStartOf="@+id/dir_icon_holder"
+            android:alpha="0.5"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#FFFFFFFF"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/photo_cnt"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerVertical="true"
+            android:layout_toStartOf="@+id/dir_icon_holder"
+            android:layout_marginEnd="8dp"
+            android:alpha="0.5"
+            android:textColor="#FFFFFFFF"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:id="@+id/dir_icon_holder"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:gravity="center_vertical|end"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/dir_location"
+                android:layout_width="@dimen/sd_card_icon_size"
+                android:layout_height="@dimen/sd_card_icon_size"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_sd_card_vector"
+                android:visibility="gone" />
+
+            <ImageView
+                android:id="@+id/dir_pin"
+                android:layout_width="@dimen/sd_card_icon_size"
+                android:layout_height="@dimen/sd_card_icon_size"
+                android:contentDescription="@string/pin"
+                android:src="@drawable/ic_pin_filled_vector"
+                android:visibility="gone" />
+
+            <ImageView
+                android:id="@+id/dir_drag_handle"
+                android:layout_width="@dimen/selection_check_size"
+                android:layout_height="@dimen/selection_check_size"
+                android:layout_marginStart="@dimen/small_margin"
+                android:contentDescription="@string/reorder_by_dragging"
+                android:src="@drawable/ic_drag_handle_vector"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+    </RelativeLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginStart="80dp"
+        android:layout_marginEnd="20dp"
+        android:background="#1AFFFFFF" />
+
+</LinearLayout>

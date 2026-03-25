@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="AppCompatResource">
+    <item
+        android:id="@+id/toggle_view"
+        android:icon="@drawable/ic_view_list_vector"
+        android:title="@string/change_view_type"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/show_all"
+        android:title="@string/show_all"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/sort"
+        android:title="@string/sort_by"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/filter"
+        android:title="@string/filter_media"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/temporarily_show_hidden"
+        android:title="@string/temporarily_show_hidden"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/stop_showing_hidden"
+        android:title="@string/stop_showing_hidden"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/temporarily_show_excluded"
+        android:title="@string/temporarily_show_excluded"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/stop_showing_excluded"
+        android:title="@string/stop_showing_excluded"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/set_as_default_folder"
+        android:title="@string/set_as_default_folder"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/create_new_folder"
+        android:title="@string/create_new_folder"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/open_recycle_bin"
+        android:title="@string/open_the_recycle_bin"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/column_count"
+        android:title="@string/column_count"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/settings"
+        android:title="@string/settings"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/about"
+        android:title="@string/about"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/more_apps_from_us"
+        android:title="@string/more_fossify_apps"
+        android:visible="false"
+        app:showAsAction="never" />
+</menu>

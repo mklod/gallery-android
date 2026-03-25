@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="AppCompatResource">
+    <item
+        android:id="@+id/toggle_calendar"
+        android:icon="@drawable/ic_calendar_vector"
+        android:title="Toggle calendar"
+        app:showAsAction="always" />
+    <item
+        android:id="@+id/toggle_filename"
+        android:title="@string/toggle_filename"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/folder_view"
+        android:title="@string/folder_view"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/sort"
+        android:title="@string/sort_by"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/filter"
+        android:title="@string/filter_media"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/change_view_type"
+        android:title="@string/change_view_type"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/temporarily_show_hidden"
+        android:title="@string/temporarily_show_hidden"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/stop_showing_hidden"
+        android:title="@string/stop_showing_hidden"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/empty_recycle_bin"
+        android:title="@string/empty_recycle_bin"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/empty_disable_recycle_bin"
+        android:title="@string/empty_and_disable_recycle_bin"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/open_recycle_bin"
+        android:title="@string/open_the_recycle_bin"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/restore_all_files"
+        android:title="@string/restore_all_files"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/open_camera"
+        android:title="@string/open_camera"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/group"
+        android:title="@string/group_by"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/set_as_default_folder"
+        android:title="@string/set_as_default_folder"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/unset_as_default_folder"
+        android:title="@string/unset_as_default_folder"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/create_new_folder"
+        android:title="@string/create_new_folder"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/column_count"
+        android:title="@string/column_count"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/slideshow"
+        android:title="@string/slideshow"
+        android:visible="false"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/settings"
+        android:title="@string/settings"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/about"
+        android:title="@string/about"
+        app:showAsAction="never" />
+</menu>
