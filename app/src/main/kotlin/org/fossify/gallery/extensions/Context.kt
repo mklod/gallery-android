@@ -96,6 +96,7 @@ import org.fossify.gallery.helpers.RECYCLE_BIN
 import org.fossify.gallery.helpers.ROUNDED_CORNERS_NONE
 import org.fossify.gallery.helpers.ROUNDED_CORNERS_SMALL
 import org.fossify.gallery.helpers.SHOW_ALL
+import org.fossify.gallery.helpers.SHOW_VIDEOS
 import org.fossify.gallery.helpers.THUMBNAIL_FADE_DURATION_MS
 import org.fossify.gallery.helpers.TYPE_GIFS
 import org.fossify.gallery.helpers.TYPE_IMAGES
@@ -760,6 +761,22 @@ fun Context.loadImageBase(
     builder.into(target)
 }
 
+fun Context.preloadThumbnails(paths: List<String>, thumbnailSize: Int = 256) {
+    val options = RequestOptions()
+        .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
+        .priority(Priority.LOW)
+        .override(thumbnailSize)
+        .format(DecodeFormat.PREFER_ARGB_8888)
+        .optionalTransform(CenterCrop())
+
+    for (path in paths) {
+        Glide.with(applicationContext)
+            .load(path)
+            .apply(options)
+            .preload()
+    }
+}
+
 fun Context.loadSVG(
     path: String,
     target: MySquareImageView,
@@ -927,41 +944,39 @@ fun Context.getCachedMedia(
 ) {
     ensureBackgroundThread {
         val mediaFetcher = MediaFetcher(this)
-        val foldersToScan = if (path.isEmpty()) {
-            mediaFetcher.getFoldersToScan()
-        } else {
-            arrayListOf(path)
-        }
+        val isShowAll = path.isEmpty() || path == SHOW_ALL
 
         var media = ArrayList<Medium>()
-        if (path == FAVORITES) {
-            media.addAll(mediaDB.getFavorites())
-        }
 
-        if (path == RECYCLE_BIN) {
-            media.addAll(getUpdatedDeletedMedia())
-        }
-
-        if (config.filterMedia and TYPE_PORTRAITS != 0) {
-            val foldersToAdd = ArrayList<String>()
-            for (folder in foldersToScan) {
-                val allFiles = File(folder).listFiles() ?: continue
-                allFiles.filter { it.name.startsWith("img_", true) && it.isDirectory }.forEach {
-                    foldersToAdd.add(it.absolutePath)
-                }
-            }
-            foldersToScan.addAll(foldersToAdd)
-        }
-
-        val shouldShowHidden = config.shouldShowHidden
-        foldersToScan.filter { path.isNotEmpty() || !config.isFolderProtected(it) }.forEach {
+        if (isShowAll) {
+            // Fast path: single bulk DB query instead of per-folder scanning
             try {
-                val currMedia = mediaDB.getMediaFromPath(it)
+                media.addAll(mediaDB.getAllMedia())
+            } catch (ignored: Exception) {
+            }
+        } else if (path == FAVORITES) {
+            media.addAll(mediaDB.getFavorites())
+        } else if (path == RECYCLE_BIN) {
+            media.addAll(getUpdatedDeletedMedia())
+        } else {
+            try {
+                val currMedia = mediaDB.getMediaFromPath(path)
                 media.addAll(currMedia)
             } catch (ignored: Exception) {
             }
+
+            if (config.filterMedia and TYPE_PORTRAITS != 0) {
+                val allFiles = File(path).listFiles() ?: emptyArray()
+                allFiles.filter { it.name.startsWith("img_", true) && it.isDirectory }.forEach {
+                    try {
+                        media.addAll(mediaDB.getMediaFromPath(it.absolutePath))
+                    } catch (ignored: Exception) {
+                    }
+                }
+            }
         }
 
+        val shouldShowHidden = config.shouldShowHidden
         if (!shouldShowHidden) {
             media = media.filter { !it.path.contains("/.") } as ArrayList<Medium>
         }

@@ -1,5 +1,150 @@
 # Changelog
-All notable changes to this project will be documented in this file.
+
+## Fork Builds (Right Gallery reskin)
+
+## Build 2026-03-26--2015
+### Changes
+- Fixed pull-to-refresh crash: rescan-skip early return now stops refresh indicator
+- Fixed deleted items lingering: invalidate MediaFetcher cache after deletion
+- Fixed stale folder thumbnails: reset scan IDs on resume so rescan runs fresh after returning from other activities
+- Added `isDestroyed`/`isFinishing` guards on all runOnUiThread blocks in gotDirectories and gotMedia
+- After deletion, immediately update adapter to remove items from UI
+
+### Testing Checklist
+- [ ] Pull-to-refresh works without crashing
+  - Notes:
+- [ ] After deleting a photo, returning to gallery view shows it removed immediately
+  - Notes:
+- [ ] Folder thumbnail updates after deleting the thumbnail image
+  - Notes:
+- [ ] Normal navigation still works (folders, media, detail)
+  - Notes:
+
+---
+
+## Build 2026-03-26--2000
+### Changes
+- Removed Videos virtual folder entirely — only "All media" remains
+- No code changes from 2026-03-25--1245, rebuild after NAS migration
+
+### Testing Checklist
+- [ ] App launches and shows folder list with "All media" at top
+  - Notes:
+- [ ] No "Videos" folder visible
+  - Notes:
+- [ ] Tapping folders loads media correctly
+  - Notes:
+- [ ] "All media" loads all photos/videos
+  - Notes:
+- [ ] Scrolling is smooth
+  - Notes:
+
+---
+
+## Build 2026-03-25--1245
+### Changes
+- Removed Videos virtual folder entirely — only "All media" remains as a virtual folder
+- Fixed `getCachedMedia` for SHOW_ALL: single bulk DB query (`getAllMedia()`) instead of per-folder `getFoldersToScan()` + N separate queries
+- Added `getAllMedia()` and `getAllVideos()` DAO queries
+- Fixed `GetMediaAsynctask` to apply `filterMedia` in showAll mode
+- Removed SHOW_VIDEOS handling from MediaActivity, MainActivity, Context.kt
+- Removed filterMedia reset in MainActivity.onResume
+
+### Testing Checklist
+- [ ] Main page shows "All media" folder at top, no "Videos" folder
+  - Notes: 
+- [ ] Tapping "All media" opens calendar view of all photos/videos
+  - Notes:
+- [ ] All media folder loads noticeably faster than baseline
+  - Notes:
+- [ ] Regular folders load and display correctly
+  - Notes:
+- [ ] Scrolling through thumbnails is smooth
+  - Notes:
+- [ ] Returning from folder/detail view back to main page is responsive
+  - Notes:
+- [ ] No recycling bin visible on main page
+  - Notes: deletes aren't instant. they take a while to disappear from gallery view after being deleted in image detail view. after deletion, returning to gallery view, they are still visible for a few seconds before actually disappearing. and a thumbnail of folder is still the deleted image. pull down to refresh crashes up. thumbnail updates super slow post deletion, sometimes never updating. 
+
+---
+
+## Build 2026-03-25--0242
+### Changes
+- Performance: Added DB indexes on parent_path, deleted_ts, is_favorite, type (migration v10→v11)
+- Performance: Cached `getLastModifieds()` and `getDateTakens()` with 30s TTL in MediaFetcher
+- Performance: DiffUtil for DirectoryAdapter.updateDirs() and MediaAdapter.updateMedia()
+- Performance: RecyclerView tuning — setItemViewCacheSize(20), setHasFixedSize(true)
+- Performance: Glide thumbnail prefetching — preloads first 30 thumbnails on media load
+- Performance: Skip redundant folder rescans when MediaStore hasn't changed
+
+### Testing Checklist
+- [ ] App starts and shows folder list
+  - Notes:
+- [ ] Folders load faster on second open (cached scan skip)
+  - Notes:
+- [ ] Scrolling through thumbnails is smooth
+  - Notes:
+- [ ] DB migration works (no crash on upgrade from previous version)
+  - Notes:
+
+---
+
+## Build 2026-03-25--0231 (baseline)
+### Changes
+- Performance baseline APK before optimizations
+- Removed `listFiles()` filesystem scan from virtual folder setup
+- Config writes gated to first run only
+- Reduced `applyDarkToolbarStyle` from 3 calls to 1 per onResume
+- Eliminated redundant double `setupAdapter` call in MainActivity.onResume
+
+### Testing Checklist
+- [ ] App launches without crash
+  - Notes:
+- [ ] Basic navigation works (folders, media, detail view)
+  - Notes:
+
+---
+
+## Build 2026-03-25--0116
+### Changes
+- Never show recycling bin on main page
+- Fixed Videos folder thumbnail and item count (DB queries)
+- Long press selection: opaque white circle with black checkmark
+- "Temporarily show hidden" only reveals dot-prefixed folders, not .nomedia system folders
+
+### Testing Checklist
+- [ ] No recycle bin visible on main page
+  - Notes:
+- [ ] Selection checkmark is white circle / black check
+  - Notes:
+- [ ] "Temporarily show hidden" doesn't flood with system folders
+  - Notes:
+
+---
+
+## Build 2026-03-24--2357
+### Changes
+- Three-way view toggle: calendar → wall → compact list
+- Menu cleanup: removed many items from folder and main hamburger menus
+- MAX_COLUMN_COUNT reduced from 20 to 6
+- Thumbnail spacing set to 13
+- Renamed "All" to "All media"
+- Added 1px separator line above date headers in calendar view
+- Added bottom padding to folder header toolbar
+
+### Testing Checklist
+- [ ] Three-way toggle cycles: calendar → wall → list
+  - Notes:
+- [ ] Column count options are 1-6
+  - Notes:
+- [ ] Date separator lines visible in calendar view
+  - Notes:
+
+---
+
+## Upstream Changelog (Fossify Gallery)
+
+All notable changes to the original project are documented below.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).

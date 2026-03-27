@@ -106,6 +106,7 @@ import org.fossify.gallery.helpers.TYPE_VIDEOS
 import org.fossify.gallery.interfaces.DirectoryOperationsListener
 import org.fossify.gallery.models.AlbumCover
 import org.fossify.gallery.models.Directory
+import androidx.recyclerview.widget.DiffUtil
 import java.io.File
 import java.util.Collections
 
@@ -815,10 +816,26 @@ class DirectoryAdapter(
         val directories = newDirs.clone() as ArrayList<Directory>
         if (directories.hashCode() != currentDirectoriesHash) {
             currentDirectoriesHash = directories.hashCode()
+            val oldDirs = dirs
             dirs = directories
             fillLockedFolders()
-            notifyDataSetChanged()
+            val diffResult = DiffUtil.calculateDiff(DirectoryDiffCallback(oldDirs, directories))
+            diffResult.dispatchUpdatesTo(this)
             finishActMode()
+        }
+    }
+
+    private class DirectoryDiffCallback(
+        private val oldList: ArrayList<Directory>,
+        private val newList: ArrayList<Directory>
+    ) : DiffUtil.Callback() {
+        override fun getOldListSize() = oldList.size
+        override fun getNewListSize() = newList.size
+        override fun areItemsTheSame(oldPos: Int, newPos: Int) = oldList[oldPos].path == newList[newPos].path
+        override fun areContentsTheSame(oldPos: Int, newPos: Int): Boolean {
+            val old = oldList[oldPos]
+            val new = newList[newPos]
+            return old.path == new.path && old.tmb == new.tmb && old.subfoldersMediaCount == new.subfoldersMediaCount && old.name == new.name
         }
     }
 

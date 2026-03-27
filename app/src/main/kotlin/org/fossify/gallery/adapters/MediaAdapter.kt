@@ -92,6 +92,7 @@ import org.fossify.gallery.interfaces.MediaOperationsListener
 import org.fossify.gallery.models.Medium
 import org.fossify.gallery.models.ThumbnailItem
 import org.fossify.gallery.models.ThumbnailSection
+import androidx.recyclerview.widget.DiffUtil
 
 class MediaAdapter(
     activity: BaseSimpleActivity,
@@ -629,9 +630,37 @@ class MediaAdapter(
         val thumbnailItems = newMedia.clone() as ArrayList<ThumbnailItem>
         if (thumbnailItems.hashCode() != currentMediaHash) {
             currentMediaHash = thumbnailItems.hashCode()
+            val oldMedia = media
             media = thumbnailItems
-            notifyDataSetChanged()
+            val diffResult = DiffUtil.calculateDiff(MediaDiffCallback(oldMedia, thumbnailItems))
+            diffResult.dispatchUpdatesTo(this)
             finishActMode()
+        }
+    }
+
+    private class MediaDiffCallback(
+        private val oldList: ArrayList<ThumbnailItem>,
+        private val newList: ArrayList<ThumbnailItem>
+    ) : DiffUtil.Callback() {
+        override fun getOldListSize() = oldList.size
+        override fun getNewListSize() = newList.size
+        override fun areItemsTheSame(oldPos: Int, newPos: Int): Boolean {
+            val old = oldList[oldPos]
+            val new = newList[newPos]
+            return when {
+                old is Medium && new is Medium -> old.path == new.path
+                old is ThumbnailSection && new is ThumbnailSection -> old.title == new.title
+                else -> false
+            }
+        }
+        override fun areContentsTheSame(oldPos: Int, newPos: Int): Boolean {
+            val old = oldList[oldPos]
+            val new = newList[newPos]
+            return when {
+                old is Medium && new is Medium -> old.path == new.path && old.modified == new.modified && old.size == new.size
+                old is ThumbnailSection && new is ThumbnailSection -> old.title == new.title
+                else -> false
+            }
         }
     }
 

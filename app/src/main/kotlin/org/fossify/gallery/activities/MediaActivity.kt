@@ -64,6 +64,7 @@ import org.fossify.gallery.dialogs.ChangeSortingDialog
 import org.fossify.gallery.dialogs.ChangeViewTypeDialog
 import org.fossify.gallery.dialogs.FilterMediaDialog
 import org.fossify.gallery.dialogs.GrantAllFilesDialog
+import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.deleteDBPath
 import org.fossify.gallery.extensions.directoryDB
@@ -85,6 +86,7 @@ import org.fossify.gallery.extensions.restoreRecycleBinPaths
 import org.fossify.gallery.extensions.showRecycleBinEmptyingDialog
 import org.fossify.gallery.extensions.showRestoreConfirmationDialog
 import org.fossify.gallery.extensions.tryDeleteFileDirItem
+import org.fossify.gallery.extensions.preloadThumbnails
 import org.fossify.gallery.extensions.updateWidgets
 import org.fossify.gallery.helpers.DIRECTORY
 import org.fossify.gallery.helpers.GET_ANY_INTENT
@@ -483,7 +485,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             mStoredMarkFavoriteItems = markFavoriteItems
             mStoredThumbnailSpacing = thumbnailSpacing
             mStoredRoundedCorners = fileRoundedCorners
-            mShowAll = (showAll || mPath == SHOW_VIDEOS) && mPath != RECYCLE_BIN
+            mShowAll = showAll && mPath != RECYCLE_BIN
         }
     }
 
@@ -549,7 +551,6 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             )
             toolbar.layoutParams = lp
             toolbar.title = when {
-                mPath == SHOW_VIDEOS -> "Videos"
                 mShowAll -> "All media"
                 else -> dirName
             }
@@ -606,6 +607,9 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
                 setupZoomListener(mZoomListener)
                 binding.mediaGrid.adapter = this
             }
+
+            binding.mediaGrid.setItemViewCacheSize(20)
+            binding.mediaGrid.setHasFixedSize(true)
 
             val viewType = config.getFolderViewType(if (mShowAll) SHOW_ALL else mPath)
             if (viewType == VIEW_TYPE_LIST && areSystemAnimationsEnabled) {
@@ -1095,17 +1099,30 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         checkLastMediaChanged()
         mMedia = media
 
-        runOnUiThread {
-            binding.loadingIndicator.hide()
-            binding.mediaRefreshLayout.isRefreshing = false
-            binding.mediaEmptyTextPlaceholder.beVisibleIf(media.isEmpty() && !isFromCache)
-            binding.mediaEmptyTextPlaceholder2.beVisibleIf(media.isEmpty() && !isFromCache)
-
-            if (binding.mediaEmptyTextPlaceholder.isVisible()) {
-                binding.mediaEmptyTextPlaceholder.text = getString(R.string.no_media_with_filters)
+        // Preload thumbnails for the first visible batch
+        if (media.isNotEmpty()) {
+            val pathsToPreload = media
+                .filterIsInstance<Medium>()
+                .take(30)
+                .map { it.path }
+            if (pathsToPreload.isNotEmpty()) {
+                ensureBackgroundThread { preloadThumbnails(pathsToPreload) }
             }
-            binding.mediaFastscroller.beVisibleIf(binding.mediaEmptyTextPlaceholder.isGone())
-            setupAdapter()
+        }
+
+        if (!isDestroyed && !isFinishing) {
+            runOnUiThread {
+                binding.loadingIndicator.hide()
+                binding.mediaRefreshLayout.isRefreshing = false
+                binding.mediaEmptyTextPlaceholder.beVisibleIf(media.isEmpty() && !isFromCache)
+                binding.mediaEmptyTextPlaceholder2.beVisibleIf(media.isEmpty() && !isFromCache)
+
+                if (binding.mediaEmptyTextPlaceholder.isVisible()) {
+                    binding.mediaEmptyTextPlaceholder.text = getString(R.string.no_media_with_filters)
+                }
+                binding.mediaFastscroller.beVisibleIf(binding.mediaEmptyTextPlaceholder.isGone())
+                setupAdapter()
+            }
         }
 
         mLatestMediaId = getLatestMediaId()
@@ -1172,6 +1189,9 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
 
             mMedia.removeAll { filtered.map { it.path }.contains((it as? Medium)?.path) }
 
+            // Invalidate caches so main page refreshes after deletion
+            MediaFetcher.invalidateCache()
+
             ensureBackgroundThread {
                 val useRecycleBin = config.useRecycleBin
                 filtered.forEach {
@@ -1179,6 +1199,11 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
                         deleteDBPath(it.path)
                     }
                 }
+            }
+
+            // Update UI immediately to reflect deletion
+            if (!isDestroyed && !isFinishing) {
+                runOnUiThread { setupAdapter() }
             }
 
             if (mMedia.isEmpty()) {

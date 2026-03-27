@@ -195,6 +195,8 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     private var mDirs = ArrayList<Directory>()
     private var mDirsIgnoringSearch = ArrayList<Directory>()
     private var mForceRecreateAdapter = false
+    private var mLastCompletedScanMediaId = 0L
+    private var mLastCompletedScanDateId = 0L
 
     private var mStoredAnimateGifs = true
     private var mStoredCropThumbnails = true
@@ -304,6 +306,9 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
     override fun onResume() {
         super.onResume()
+        // Invalidate scan cache so returning from other activities triggers a fresh rescan
+        mLastCompletedScanMediaId = 0L
+        mLastCompletedScanDateId = 0L
         updateMenuColors()
         config.isThirdPartyIntent = false
         mDateFormat = config.dateFormat
@@ -352,9 +357,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         binding.directoriesSwitchSearching.setTextColor(primaryColor)
         binding.directoriesSwitchSearching.underlineText()
         binding.directoriesEmptyPlaceholder2.bringToFront()
-
-        // Always restore default filter when returning to main view
-        config.filterMedia = getDefaultFileFilter()
 
         refreshMenuItems()
         tryLoadGallery()
@@ -1066,16 +1068,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
             }
             return
         }
-        if (path == SHOW_VIDEOS) {
-            config.showAll = true
-            config.filterMedia = TYPE_VIDEOS
-            Intent(this, MediaActivity::class.java).apply {
-                putExtra(DIRECTORY, SHOW_VIDEOS)
-                hideKeyboard()
-                startActivity(this)
-            }
-            return
-        }
         handleLockedFolderOpening(path) { success ->
             if (success) {
                 Intent(this, MediaActivity::class.java).apply {
@@ -1127,9 +1119,22 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
         val forceRecreate = mForceRecreateAdapter
         mForceRecreateAdapter = false
-        runOnUiThread {
-            checkPlaceholderVisibility(dirs)
-            setupAdapter(dirs.clone() as ArrayList<Directory>, forceRecreate = forceRecreate)
+        if (!isDestroyed && !isFinishing) {
+            runOnUiThread {
+                checkPlaceholderVisibility(dirs)
+                setupAdapter(dirs.clone() as ArrayList<Directory>, forceRecreate = forceRecreate)
+            }
+        }
+
+        // Skip full rescan if MediaStore hasn't changed since last completed scan
+        val currentMediaId = getLatestMediaId()
+        val currentDateId = getLatestMediaByDateId()
+        if (currentMediaId == mLastCompletedScanMediaId && currentDateId == mLastCompletedScanDateId
+            && mLastCompletedScanMediaId != 0L && dirs.isNotEmpty()) {
+            runOnUiThread {
+                binding.directoriesRefreshLayout.isRefreshing = false
+            }
+            return
         }
 
         // cached folders have been loaded, recheck folders one by one starting with the first displayed
@@ -1360,13 +1365,17 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         }
 
         mLoadedInitialPhotos = true
+        mLastCompletedScanMediaId = currentMediaId
+        mLastCompletedScanDateId = currentDateId
         if (config.appRunCount > 1) {
             checkLastMediaChanged()
         }
 
-        runOnUiThread {
-            binding.directoriesRefreshLayout.isRefreshing = false
-            checkPlaceholderVisibility(dirs)
+        if (!isDestroyed && !isFinishing) {
+            runOnUiThread {
+                binding.directoriesRefreshLayout.isRefreshing = false
+                checkPlaceholderVisibility(dirs)
+            }
         }
 
         checkInvalidDirectories(dirs)
@@ -1475,25 +1484,10 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
         // Add virtual folders at the top
         if (!mIsThirdPartyIntent) {
-            dirsToShow.removeAll { it.path == SHOW_ALL || it.path == SHOW_VIDEOS }
+            dirsToShow.removeAll { it.path == SHOW_ALL }
             val realDirs = dirsToShow.filter { it.path != FAVORITES }
             val totalMedia = realDirs.sumOf { it.subfoldersMediaCount }
             val firstTmb = realDirs.firstOrNull()?.tmb ?: ""
-
-            // Get video count and thumbnail from DB (fast, no filesystem scan)
-            val videoCount = try { mediaDB.getVideoCount() } catch (e: Exception) { 0L }
-            val videoTmbPath = try { mediaDB.getFirstVideoPath() } catch (e: Exception) { null }
-            val videoTmb = videoTmbPath ?: realDirs.firstOrNull { it.types and TYPE_VIDEOS != 0 }?.tmb
-                ?: realDirs.firstOrNull()?.tmb ?: ""
-            val videosFolder = Directory().apply {
-                path = SHOW_VIDEOS
-                name = "Videos"
-                location = LOCATION_INTERNAL
-                subfoldersCount = 1
-                subfoldersMediaCount = videoCount.toInt()
-                tmb = videoTmb
-            }
-            dirsToShow.add(0, videosFolder)
 
             val allFolder = Directory().apply {
                 path = SHOW_ALL
@@ -1532,6 +1526,8 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                 setupZoomListener(mZoomListener)
                 runOnUiThread {
                     binding.directoriesGrid.adapter = this
+                    binding.directoriesGrid.setItemViewCacheSize(20)
+                    binding.directoriesGrid.setHasFixedSize(true)
                     setupScrollDirection()
 
                     if (config.viewTypeFolders == VIEW_TYPE_LIST && areSystemAnimationsEnabled) {
@@ -1645,6 +1641,7 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                 if (mLatestMediaId != mediaId || mLatestMediaDateId != mediaDateId) {
                     mLatestMediaId = mediaId
                     mLatestMediaDateId = mediaDateId
+                    MediaFetcher.invalidateCache()
                     runOnUiThread {
                         getDirectories()
                     }

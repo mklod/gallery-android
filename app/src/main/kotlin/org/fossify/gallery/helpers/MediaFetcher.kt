@@ -25,6 +25,21 @@ import java.util.Locale
 class MediaFetcher(val context: Context) {
     var shouldStop = false
 
+    companion object {
+        private const val METADATA_CACHE_TTL_MS = 30_000L // 30 seconds
+        private var cachedLastModifieds: HashMap<String, Long>? = null
+        private var cachedDateTakens: HashMap<String, Long>? = null
+        private var lastModifiedsCacheTime = 0L
+        private var dateTakensCacheTime = 0L
+
+        fun invalidateCache() {
+            cachedLastModifieds = null
+            cachedDateTakens = null
+            lastModifiedsCacheTime = 0L
+            dateTakensCacheTime = 0L
+        }
+    }
+
     // on Android 11 we fetch all files at once from MediaStore and have it split by folder, use it if available
     fun getFilesFrom(
         curPath: String, isPickImage: Boolean, isPickVideo: Boolean, getProperDateTaken: Boolean, getProperLastModified: Boolean,
@@ -650,6 +665,12 @@ class MediaFetcher(val context: Context) {
     }
 
     fun getDateTakens(): HashMap<String, Long> {
+        val now = System.currentTimeMillis()
+        val cached = cachedDateTakens
+        if (cached != null && now - dateTakensCacheTime < METADATA_CACHE_TTL_MS) {
+            return cached
+        }
+
         val dateTakens = HashMap<String, Long>()
         val projection = arrayOf(
             Images.Media.DATA,
@@ -678,6 +699,8 @@ class MediaFetcher(val context: Context) {
         } catch (e: Exception) {
         }
 
+        cachedDateTakens = dateTakens
+        dateTakensCacheTime = now
         return dateTakens
     }
 
@@ -709,6 +732,12 @@ class MediaFetcher(val context: Context) {
     }
 
     fun getLastModifieds(): HashMap<String, Long> {
+        val now = System.currentTimeMillis()
+        val cached = cachedLastModifieds
+        if (cached != null && now - lastModifiedsCacheTime < METADATA_CACHE_TTL_MS) {
+            return cached
+        }
+
         val lastModifieds = HashMap<String, Long>()
         val projection = arrayOf(
             Images.Media.DATA,
@@ -731,6 +760,8 @@ class MediaFetcher(val context: Context) {
         } catch (e: Exception) {
         }
 
+        cachedLastModifieds = lastModifieds
+        lastModifiedsCacheTime = now
         return lastModifieds
     }
 

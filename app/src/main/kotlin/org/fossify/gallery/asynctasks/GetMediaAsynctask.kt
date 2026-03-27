@@ -48,8 +48,23 @@ class GetMediaAsynctask(
                 media.addAll(newMedia)
             }
 
-            mediaFetcher.sortMedia(media, context.config.getFolderSorting(SHOW_ALL))
-            media
+            // Apply video filter for SHOW_VIDEOS virtual folder
+            val filterMedia = context.config.filterMedia
+            val filtered = if (filterMedia != getDefaultFileFilter()) {
+                media.filter {
+                    (filterMedia and TYPE_IMAGES != 0 && it.type == TYPE_IMAGES)
+                        || (filterMedia and TYPE_VIDEOS != 0 && it.type == TYPE_VIDEOS)
+                        || (filterMedia and TYPE_GIFS != 0 && it.type == TYPE_GIFS)
+                        || (filterMedia and TYPE_RAWS != 0 && it.type == TYPE_RAWS)
+                        || (filterMedia and TYPE_SVGS != 0 && it.type == TYPE_SVGS)
+                        || (filterMedia and TYPE_PORTRAITS != 0 && it.type == TYPE_PORTRAITS)
+                } as ArrayList<Medium>
+            } else {
+                media
+            }
+
+            mediaFetcher.sortMedia(filtered, context.config.getFolderSorting(SHOW_ALL))
+            filtered
         } else {
             mediaFetcher.getFilesFrom(
                 mPath, isPickImage, isPickVideo, getProperDateTaken, getProperLastModified, getProperFileSize, favoritePaths,
