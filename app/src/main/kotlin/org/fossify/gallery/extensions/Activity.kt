@@ -1,3 +1,4 @@
+// Last modified: 2026-07-02--1645
 package org.fossify.gallery.extensions
 
 import android.app.Activity
@@ -45,6 +46,7 @@ import org.fossify.gallery.dialogs.PickDirectoryDialog
 import org.fossify.gallery.dialogs.ResizeMultipleImagesDialog
 import org.fossify.gallery.dialogs.ResizeWithPathDialog
 import org.fossify.gallery.helpers.DIRECTORY
+import org.fossify.gallery.helpers.MediaTombstones
 import org.fossify.gallery.helpers.RECYCLE_BIN
 import org.fossify.gallery.helpers.TEMP_FOLDER_NAME
 import org.fossify.gallery.models.DateTaken
@@ -371,6 +373,7 @@ fun BaseSimpleActivity.movePathsInRecycleBin(paths: ArrayList<String>, callback:
 
                     if (fileDocument.getItemSize(true) == copiedSize && getDoesFilePathExist(destination)) {
                         mediaDB.updateDeleted("$RECYCLE_BIN$source", System.currentTimeMillis(), source)
+                        MediaTombstones.add(source)
                         pathsCnt--
                     }
                 } catch (e: Exception) {
@@ -387,6 +390,7 @@ fun BaseSimpleActivity.movePathsInRecycleBin(paths: ArrayList<String>, callback:
                 try {
                     if (file.copyRecursively(internalFile, true)) {
                         mediaDB.updateDeleted("$RECYCLE_BIN$source", System.currentTimeMillis(), source)
+                        MediaTombstones.add(source)
                         pathsCnt--
 
                         if (config.keepLastModified && lastModified != 0L) {
@@ -461,6 +465,7 @@ fun BaseSimpleActivity.restoreRecycleBinPaths(paths: ArrayList<String>, callback
 
                 if (File(source).length() == copiedSize) {
                     mediaDB.updateDeleted(destination.removePrefix(recycleBinPath), 0, "$RECYCLE_BIN${source.removePrefix(recycleBinPath)}")
+                    MediaTombstones.clear(destination)
                 }
                 newPaths.add(destination)
 

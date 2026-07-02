@@ -1,6 +1,175 @@
 # Changelog
 
+## TODO
+> [!tip] Queued for next build
+> - (no items queued)
+
 ## Fork Builds (Right Gallery reskin)
+
+## Build 2026-07-02--1647
+### Changes
+- Fixed deleted/moved items lingering in gallery views (root-cause fix, replaces the partial 2026-03-26 fix):
+  - New `MediaTombstones` guard: paths just deleted or moved by the app are blocked (60 s) from being re-imported into the Room cache and the visible grid by overlapping background rescans. Previously any scan running during a delete/move (MediaActivity async scan, MainActivity folder loop with its pre-fetched MediaStore snapshot, `rescanFolderMedia`) would write the stale rows back with `INSERT OR REPLACE`, resurrecting the items — even overwriting the recycle-bin marker.
+  - Move now rescans the **old** paths in MediaStore (a filesystem rename leaves the old rows behind, so every later scan kept re-importing the moved-away files) and updates/purges their Room rows.
+  - Move to a folder outside the gallery scan scope (excluded / hidden / .nomedia) now drops the cached rows entirely instead of leaving phantom entries for All Media to show at next app start.
+  - Fullscreen (ViewPager) delete/move paths now get the same treatment (they previously did no cache invalidation at all).
+  - Tombstones are cleared when a file verifiably returns (recycle-bin restore, copy to the same path, MediaStore re-add), so restores are not hidden.
+- Added `MediaTombstonesTest` unit tests (6 tests, all passing).
+
+> [!warning] Testing Checklist
+> - [ ] Delete photos from a folder grid (recycle bin ON) — they disappear immediately and do NOT reappear after backing out to folders and re-entering, or after pull-to-refresh
+>   - Notes:
+> - [ ] Same, but delete from the fullscreen viewer, then go back to the grid
+>   - Notes:
+> - [ ] Delete while a big scan is still running (enter All Media on a cold start and delete within the first seconds) — deleted items stay gone
+>   - Notes:
+> - [ ] Move photos to a folder that the gallery does not scan (hidden/.nomedia or excluded) — they vanish from source folder AND All Media, and stay gone after app restart
+>   - Notes:
+> - [ ] Move photos between two normal visible folders — they appear in the destination, disappear from source
+>   - Notes:
+> - [ ] Move a photo back to its original folder shortly after moving it out — it shows up again in the original folder
+>   - Notes:
+> - [ ] Recycle bin: deleted items appear in the bin; restoring puts them back and they are visible again immediately
+>   - Notes:
+> - [ ] Favorites survive a move between visible folders
+>   - Notes:
+
+---
+
+## Build 2026-03-31--1419
+### Changes
+- Fixed pull-to-refresh spinner stuck forever when scan already in progress
+- Fixed pull-to-refresh spinner styling for dark theme (dark circle, white arrow)
+
+> [!warning] Testing Checklist
+> - [ ] Pull-to-refresh shows dark spinner with white arrow
+>   - Notes:
+> - [ ] Pull-to-refresh dismisses promptly after data loads
+>   - Notes:
+> - [ ] Pull-to-refresh while already loading dismisses immediately
+>   - Notes:
+
+---
+
+## Build 2026-03-31--0246
+### Changes
+- Fixed view toggle icon: now shows current view (calendar/wall/list) instead of next view
+- Fixed list view broken after adapter reuse optimization (grid↔list now recreates adapter, calendar↔wall reuses)
+- Fixed exclude folder not working in All Media: cached DB query now filters excluded paths
+- Fixed exclude folder priority: excluding a child folder now overrides including its parent
+- ~~View changer icon should show current view, not next view~~ — DONE
+
+> [!warning] Testing Checklist
+> - [x] View icon matches current view mode
+>   - Notes:
+> - [x] List view displays correctly (no full-width random photos)
+>   - Notes:
+> - [x] Exclude a folder — items disappear from All Media
+>   - Notes:
+> - [x] Include parent, exclude child — child stays excluded
+>   - Notes:
+> - [x] All perf optimizations still work (thumbnail loading, view toggle speed)
+>   - Notes:
+
+---
+
+## Build 2026-03-31--0140
+### Changes
+- P0: Thumbnails decoded at grid cell size instead of full resolution (massive memory + decode savings)
+- P1: Glide RecyclerViewPreloader for scroll-aware thumbnail prefetch (replaces static 30-item preload)
+- P2: Adapter preserved across view toggles (no more full rebuild of 4500 items)
+- P3: Parallel folder scanning (4 threads) for All Media async refresh
+- P4: Room WAL mode for concurrent DB reads during writes
+- Added test infrastructure: JUnit, Espresso, AndroidX Benchmark
+
+> [!warning] Testing Checklist
+> - [ ] All Media opens and shows thumbnails within 2 seconds
+>   - Notes:
+> - [ ] View toggle (calendar/wall/list) completes within 500ms
+>   - Notes:
+> - [ ] Scrolling through All Media has no visible jank
+>   - Notes:
+> - [ ] Regular folders load correctly
+>   - Notes:
+> - [ ] Pull-to-refresh works on All Media
+>   - Notes:
+> - [ ] Delete an item, verify it disappears
+>   - Notes:
+> - [ ] No "Videos" folder visible
+>   - Notes:
+
+---
+
+## Build 2026-03-30--1846
+### Changes
+- Fixed blank page when switching views on large folders: recreate adapter immediately with existing mMedia data, then refresh in background
+- View switching no longer nulls adapter before data is ready
+
+> [!warning] Testing Checklist
+> - [ ] View toggle (calendar→wall→list) works on All Media without blank page
+>   - Notes:
+> - [ ] View toggle works on Camera / large folders without blank page
+>   - Notes:
+> - [ ] View toggle works on small folders
+>   - Notes:
+> - [ ] Pull-to-refresh works (spinner shows briefly then stops)
+>   - Notes:
+> - [ ] No "Videos" folder visible
+>   - Notes:
+
+---
+
+## Build 2026-03-30--1810
+### Changes
+- Removed rescan-skip optimization entirely (caused pull-to-refresh to break — premature optimization)
+- Reverted pull-to-refresh listener to original simple `getDirectories()` call
+- Added `MediaFetcher.invalidateCache()` to `refreshItems()` so file moves/copies trigger fresh data
+- Stale thumbnails: rescan loop already updates tmb and DB; cache invalidation ensures metadata is fresh
+
+### Testing Checklist
+- [ ] Pull-to-refresh works on main folder view
+  - Notes:
+- [ ] Pull-to-refresh works on subfolder views
+  - Notes:
+- [ ] After moving a file out of a folder, folder thumbnail updates
+  - Notes:
+- [ ] After deleting a photo, gallery view reflects deletion
+  - Notes:
+- [ ] No "Videos" folder visible
+  - Notes:
+
+---
+
+## Build 2026-03-30--1750
+### Changes
+- Fixed stale Videos folder appearing: filter SHOW_VIDEOS from dirsToShow, delete stale DB entry on startup
+- Fixed pull-to-refresh on main view: reset mIsGettingDirs, invalidate caches, force fresh reload
+
+### Testing Checklist
+- [x] No "Videos" folder visible on main page
+  - Notes:
+- [ ] Pull-to-refresh works on main folder view
+  - Notes:broken
+- [ ] Pull-to-refresh still works on subfolder views
+  - Notes:broke
+- [ ] After deleting a photo, returning to gallery view shows it removed
+  - Notes:
+
+---
+
+## Build 2026-03-30--1746
+### Changes
+- Fixed pull-to-refresh on main view: reset mIsGettingDirs, invalidate caches, and force fresh reload on pull
+
+### Testing Checklist
+- [ ] Pull-to-refresh works on main folder view
+  - Notes:
+- [ ] Pull-to-refresh still works on subfolder views
+  - Notes:
+- [ ] After deleting a photo, returning to gallery view shows it removed
+  - Notes:
+
+---
 
 ## Build 2026-03-26--2015
 ### Changes
@@ -12,12 +181,12 @@
 
 ### Testing Checklist
 - [ ] Pull-to-refresh works without crashing
-  - Notes:
+  - Notes: not working on main view, fine on subfolder views
 - [ ] After deleting a photo, returning to gallery view shows it removed immediately
   - Notes:
-- [ ] Folder thumbnail updates after deleting the thumbnail image
+- [x] Folder thumbnail updates after deleting the thumbnail image
   - Notes:
-- [ ] Normal navigation still works (folders, media, detail)
+- [x] Normal navigation still works (folders, media, detail)
   - Notes:
 
 ---
@@ -484,3 +653,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.1.0]: https://github.com/FossifyOrg/Gallery/compare/1.0.2...1.1.0
 [1.0.2]: https://github.com/FossifyOrg/Gallery/compare/1.0.1...1.0.2
 [1.0.1]: https://github.com/FossifyOrg/Gallery/releases/tag/1.0.1
+

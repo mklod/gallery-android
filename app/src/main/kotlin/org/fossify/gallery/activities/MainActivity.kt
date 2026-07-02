@@ -1,3 +1,4 @@
+// Last modified: 2026-07-02--1645
 package org.fossify.gallery.activities
 
 import android.content.ClipData
@@ -127,6 +128,7 @@ import org.fossify.gallery.helpers.LOCATION_INTERNAL
 import org.fossify.gallery.helpers.MAX_COLUMN_COUNT
 import org.fossify.gallery.helpers.MONTH_MILLISECONDS
 import org.fossify.gallery.helpers.MediaFetcher
+import org.fossify.gallery.helpers.MediaTombstones
 import org.fossify.gallery.helpers.PICKED_PATHS
 import org.fossify.gallery.helpers.RECYCLE_BIN
 import org.fossify.gallery.helpers.SET_WALLPAPER_INTENT
@@ -195,8 +197,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
     private var mDirs = ArrayList<Directory>()
     private var mDirsIgnoringSearch = ArrayList<Directory>()
     private var mForceRecreateAdapter = false
-    private var mLastCompletedScanMediaId = 0L
-    private var mLastCompletedScanDateId = 0L
 
     private var mStoredAnimateGifs = true
     private var mStoredCropThumbnails = true
@@ -222,6 +222,10 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                 config.groupDirectSubfolders = false
                 config.thumbnailSpacing = 13
                 config.videoPlayerType = VIDEO_PLAYER_APP
+            }
+            // Clean up stale virtual folder entries from DB
+            ensureBackgroundThread {
+                try { directoryDB.deleteDirPath(SHOW_VIDEOS) } catch (e: Exception) {}
             }
             removeTempFolder()
             checkRecycleBinItems()
@@ -306,9 +310,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
 
     override fun onResume() {
         super.onResume()
-        // Invalidate scan cache so returning from other activities triggers a fresh rescan
-        mLastCompletedScanMediaId = 0L
-        mLastCompletedScanDateId = 0L
         updateMenuColors()
         config.isThirdPartyIntent = false
         mDateFormat = config.dateFormat
@@ -1126,17 +1127,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
             }
         }
 
-        // Skip full rescan if MediaStore hasn't changed since last completed scan
-        val currentMediaId = getLatestMediaId()
-        val currentDateId = getLatestMediaByDateId()
-        if (currentMediaId == mLastCompletedScanMediaId && currentDateId == mLastCompletedScanDateId
-            && mLastCompletedScanMediaId != 0L && dirs.isNotEmpty()) {
-            runOnUiThread {
-                binding.directoriesRefreshLayout.isRefreshing = false
-            }
-            return
-        }
-
         // cached folders have been loaded, recheck folders one by one starting with the first displayed
         mLastMediaFetcher?.shouldStop = true
         mLastMediaFetcher = MediaFetcher(applicationContext)
@@ -1211,6 +1201,11 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                     dateTakens = dateTakens,
                     android11Files = android11Files
                 )
+
+                // android11Files is a pre-loop MediaStore snapshot - drop freshly deleted/moved files
+                if (!MediaTombstones.isEmpty()) {
+                    curMedia.removeAll { MediaTombstones.isTombstoned(it.path) }
+                }
 
                 val newDir = if (curMedia.isEmpty()) {
                     if (directory.path != tempFolderPath) {
@@ -1327,6 +1322,10 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
                 android11Files = android11Files
             )
 
+            if (!MediaTombstones.isEmpty()) {
+                newMedia.removeAll { MediaTombstones.isTombstoned(it.path) }
+            }
+
             if (newMedia.isEmpty()) {
                 continue
             }
@@ -1365,8 +1364,6 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
         }
 
         mLoadedInitialPhotos = true
-        mLastCompletedScanMediaId = currentMediaId
-        mLastCompletedScanDateId = currentDateId
         if (config.appRunCount > 1) {
             checkLastMediaChanged()
         }
@@ -1479,8 +1476,8 @@ class MainActivity : SimpleActivity(), DirectoryOperationsListener {
             currentPathPrefix = mCurrentPathPrefix
         ).clone() as ArrayList<Directory>
 
-        // Never show recycle bin
-        dirsToShow.removeAll { it.path == RECYCLE_BIN }
+        // Never show recycle bin or stale virtual folders
+        dirsToShow.removeAll { it.path == RECYCLE_BIN || it.path == SHOW_VIDEOS }
 
         // Add virtual folders at the top
         if (!mIsThirdPartyIntent) {

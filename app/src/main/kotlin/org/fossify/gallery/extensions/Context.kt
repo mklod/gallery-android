@@ -1,3 +1,4 @@
+// Last modified: 2026-07-02--1645
 package org.fossify.gallery.extensions
 
 import android.annotation.SuppressLint
@@ -90,6 +91,7 @@ import org.fossify.gallery.helpers.LOCATION_INTERNAL
 import org.fossify.gallery.helpers.LOCATION_OTG
 import org.fossify.gallery.helpers.LOCATION_SD
 import org.fossify.gallery.helpers.MediaFetcher
+import org.fossify.gallery.helpers.MediaTombstones
 import org.fossify.gallery.helpers.MyWidgetProvider
 import org.fossify.gallery.helpers.PicassoRoundedCornersTransformation
 import org.fossify.gallery.helpers.RECYCLE_BIN
@@ -543,7 +545,8 @@ fun Context.rescanFolderMediaSync(path: String) {
             showAll = false
         ) { newMedia ->
             ensureBackgroundThread {
-                val media = newMedia.filterIsInstance<Medium>() as ArrayList<Medium>
+                val media = newMedia.filterIsInstance<Medium>()
+                    .filter { !MediaTombstones.isTombstoned(it.path) } as ArrayList<Medium>
                 try {
                     mediaDB.insertAll(media)
 
@@ -611,7 +614,8 @@ fun Context.loadImage(
     roundCorners: Int,
     signature: ObjectKey,
     skipMemoryCacheAtPaths: ArrayList<String>? = null,
-    onError: (() -> Unit)? = null
+    onError: (() -> Unit)? = null,
+    thumbnailSize: Int = 0
 ) {
     target.isHorizontalScrolling = horizontalScroll
     if (type == TYPE_SVGS) {
@@ -632,7 +636,8 @@ fun Context.loadImage(
             skipMemoryCacheAtPaths = skipMemoryCacheAtPaths,
             animate = animateGifs,
             tryLoadingWithPicasso = type == TYPE_IMAGES && path.isPng(),
-            onError = onError
+            onError = onError,
+            thumbnailSize = thumbnailSize
         )
     }
 }
@@ -681,7 +686,8 @@ fun Context.loadImageBase(
     animate: Boolean = false,
     tryLoadingWithPicasso: Boolean = false,
     crossFadeDuration: Int = THUMBNAIL_FADE_DURATION_MS,
-    onError: (() -> Unit)? = null
+    onError: (() -> Unit)? = null,
+    thumbnailSize: Int = 0
 ) {
     val options = RequestOptions()
         .signature(signature)
@@ -689,6 +695,10 @@ fun Context.loadImageBase(
         .priority(Priority.LOW)
         .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
         .format(DecodeFormat.PREFER_ARGB_8888)
+
+    if (thumbnailSize > 0) {
+        options.override(thumbnailSize)
+    }
 
     if (cropThumbnails) {
         options.optionalTransform(CenterCrop())
@@ -759,22 +769,6 @@ fun Context.loadImageBase(
     })
 
     builder.into(target)
-}
-
-fun Context.preloadThumbnails(paths: List<String>, thumbnailSize: Int = 256) {
-    val options = RequestOptions()
-        .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
-        .priority(Priority.LOW)
-        .override(thumbnailSize)
-        .format(DecodeFormat.PREFER_ARGB_8888)
-        .optionalTransform(CenterCrop())
-
-    for (path in paths) {
-        Glide.with(applicationContext)
-            .load(path)
-            .apply(options)
-            .preload()
-    }
 }
 
 fun Context.loadSVG(
@@ -951,7 +945,22 @@ fun Context.getCachedMedia(
         if (isShowAll) {
             // Fast path: single bulk DB query instead of per-folder scanning
             try {
-                media.addAll(mediaDB.getAllMedia())
+                val allMedia = mediaDB.getAllMedia()
+                val excludedPaths = if (config.temporarilyShowExcluded) {
+                    HashSet()
+                } else {
+                    config.excludedFolders
+                }
+                if (excludedPaths.isEmpty()) {
+                    media.addAll(allMedia)
+                } else {
+                    media.addAll(allMedia.filter { medium ->
+                        excludedPaths.none { excluded ->
+                            medium.parentPath.equals(excluded, true) ||
+                                "${medium.parentPath}/".startsWith("$excluded/", true)
+                        }
+                    })
+                }
             } catch (ignored: Exception) {
             }
         } else if (path == FAVORITES) {
@@ -974,6 +983,10 @@ fun Context.getCachedMedia(
                     }
                 }
             }
+        }
+
+        if (!MediaTombstones.isEmpty()) {
+            media = media.filter { !MediaTombstones.isTombstoned(it.path) } as ArrayList<Medium>
         }
 
         val shouldShowHidden = config.shouldShowHidden
@@ -1043,6 +1056,17 @@ fun Context.removeInvalidDBDirectories(dirs: ArrayList<Directory>? = null) {
         } catch (ignored: Exception) {
         }
     }
+}
+
+// whether files inside this folder would be picked up by gallery scans - same rules
+// (excluded, included, hidden/.nomedia) that getFoldersToScan applies
+fun Context.isFolderInGalleryScope(folder: String): Boolean {
+    return folder.shouldFolderBeVisible(
+        config.excludedFolders,
+        config.includedFolders,
+        config.shouldShowHidden,
+        HashMap()
+    ) { _, _ -> }
 }
 
 fun Context.updateDBMediaPath(oldPath: String, newPath: String) {
@@ -1212,6 +1236,9 @@ fun Context.addPathToDB(path: String) {
         if (!getDoesFilePathExist(path)) {
             return@ensureBackgroundThread
         }
+
+        // the file verifiably exists again (restored, recreated or re-scanned), stop suppressing it
+        MediaTombstones.clear(path)
 
         val type = when {
             path.isVideoFast() -> TYPE_VIDEOS

@@ -1,3 +1,4 @@
+// Last modified: 2026-07-02--1645
 package org.fossify.gallery.activities
 
 import android.animation.Animator
@@ -125,7 +126,7 @@ import org.fossify.gallery.extensions.tryCopyMoveFilesTo
 import org.fossify.gallery.extensions.tryDeleteFileDirItem
 import org.fossify.gallery.extensions.updateDBMediaPath
 import org.fossify.gallery.extensions.updateFavorite
-import org.fossify.gallery.extensions.updateFavoritePaths
+import org.fossify.gallery.extensions.isFolderInGalleryScope
 import org.fossify.gallery.fragments.PhotoFragment
 import org.fossify.gallery.fragments.VideoFragment
 import org.fossify.gallery.fragments.ViewPagerFragment
@@ -152,6 +153,7 @@ import org.fossify.gallery.helpers.GO_TO_PREV_ITEM
 import org.fossify.gallery.helpers.HIDE_SYSTEM_UI_DELAY
 import org.fossify.gallery.helpers.IS_VIEW_INTENT
 import org.fossify.gallery.helpers.MAX_PRINT_SIDE_SIZE
+import org.fossify.gallery.helpers.MediaTombstones
 import org.fossify.gallery.helpers.PATH
 import org.fossify.gallery.helpers.PORTRAIT_PATH
 import org.fossify.gallery.helpers.RECYCLE_BIN
@@ -801,15 +803,28 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
 
         val fileDirItems = arrayListOf(FileDirItem(currPath, currPath.getFilenameFromPath()))
         tryCopyMoveFilesTo(fileDirItems, isCopyOperation) {
-            val newPath = "$it/${currPath.getFilenameFromPath()}"
+            val destinationPath = it
+            val newPath = "$destinationPath/${currPath.getFilenameFromPath()}"
+            // the file verifiably exists at the destination now, stop suppressing that path
+            MediaTombstones.clear(newPath)
             rescanPaths(arrayListOf(newPath)) {
                 fixDateTaken(arrayListOf(newPath), false)
             }
 
             config.tempFolderPath = ""
             if (!isCopyOperation) {
+                // MediaStore keeps the old path after a rename until it is explicitly rescanned;
+                // block stale scans from re-importing it and tell MediaStore it is gone
+                MediaTombstones.add(currPath)
+                ensureBackgroundThread {
+                    updateDBMediaPath(currPath, newPath)
+                    if (!isFolderInGalleryScope(destinationPath)) {
+                        // destination is outside the gallery scan scope - drop the cached row
+                        mediaDB.deleteMediumPath(newPath)
+                    }
+                }
+                rescanPaths(arrayListOf(currPath))
                 refreshViewPager()
-                updateFavoritePaths(fileDirItems, it)
             }
         }
     }
@@ -1283,6 +1298,9 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
             }
 
             tryDeleteFileDirItem(fileDirItem, false, true) {
+                if (it) {
+                    MediaTombstones.add(fileDirItem.path)
+                }
                 mIgnoredPaths.remove(fileDirItem.path)
                 if (media.isEmpty()) {
                     deleteDirectoryIfEmpty()
@@ -1341,7 +1359,7 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
 
     private fun gotMedia(thumbnailItems: ArrayList<ThumbnailItem>, ignorePlayingVideos: Boolean = false, refetchViewPagerPosition: Boolean = false) {
         val media = thumbnailItems.asSequence().filter {
-            it is Medium && !mIgnoredPaths.contains(it.path)
+            it is Medium && !mIgnoredPaths.contains(it.path) && !MediaTombstones.isTombstoned(it.path)
         }.map { it as Medium }.toMutableList() as ArrayList<Medium>
 
         if (isDirEmpty(media) || media.hashCode() == mPrevHashcode) {

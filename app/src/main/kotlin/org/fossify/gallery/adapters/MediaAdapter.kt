@@ -1,3 +1,4 @@
+// Last modified: 2026-07-02--1645
 package org.fossify.gallery.adapters
 
 import android.content.Intent
@@ -61,9 +62,11 @@ import org.fossify.gallery.extensions.config
 import org.fossify.gallery.extensions.fixDateTaken
 import org.fossify.gallery.extensions.getShortcutImage
 import org.fossify.gallery.extensions.handleMediaManagementPrompt
+import org.fossify.gallery.extensions.isFolderInGalleryScope
 import org.fossify.gallery.extensions.launchResizeImageDialog
 import org.fossify.gallery.extensions.launchResizeMultipleImagesDialog
 import org.fossify.gallery.extensions.loadImage
+import org.fossify.gallery.extensions.mediaDB
 import org.fossify.gallery.extensions.openEditor
 import org.fossify.gallery.extensions.openPath
 import org.fossify.gallery.extensions.rescanFolderMedia
@@ -77,7 +80,7 @@ import org.fossify.gallery.extensions.toggleFileVisibility
 import org.fossify.gallery.extensions.tryCopyMoveFilesTo
 import org.fossify.gallery.extensions.updateDBMediaPath
 import org.fossify.gallery.extensions.updateFavorite
-import org.fossify.gallery.extensions.updateFavoritePaths
+import org.fossify.gallery.helpers.MediaTombstones
 import org.fossify.gallery.helpers.PATH
 import org.fossify.gallery.helpers.RECYCLE_BIN
 import org.fossify.gallery.helpers.ROUNDED_CORNERS_BIG
@@ -92,7 +95,15 @@ import org.fossify.gallery.interfaces.MediaOperationsListener
 import org.fossify.gallery.models.Medium
 import org.fossify.gallery.models.ThumbnailItem
 import org.fossify.gallery.models.ThumbnailSection
+import android.graphics.drawable.Drawable
 import androidx.recyclerview.widget.DiffUtil
+import com.bumptech.glide.ListPreloader
+import com.bumptech.glide.Priority
+import com.bumptech.glide.RequestBuilder
+import com.bumptech.glide.load.DecodeFormat
+import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.load.resource.bitmap.CenterCrop
+import com.bumptech.glide.request.RequestOptions
 
 class MediaAdapter(
     activity: BaseSimpleActivity,
@@ -104,15 +115,17 @@ class MediaAdapter(
     recyclerView: MyRecyclerView,
     itemClick: (Any) -> Unit
 ) : MyRecyclerViewAdapter(activity, recyclerView, itemClick),
-    RecyclerViewFastScroller.OnPopupTextUpdate {
+    RecyclerViewFastScroller.OnPopupTextUpdate,
+    ListPreloader.PreloadModelProvider<String> {
 
     private val ITEM_SECTION = 0
     private val ITEM_MEDIUM_VIDEO_PORTRAIT = 1
     private val ITEM_MEDIUM_PHOTO = 2
 
     private val config = activity.config
-    private val viewType = config.getFolderViewType(if (config.showAll) SHOW_ALL else path)
-    private val isListViewType = viewType == VIEW_TYPE_LIST
+    private var viewType = config.getFolderViewType(if (config.showAll) SHOW_ALL else path)
+    var isListViewType = viewType == VIEW_TYPE_LIST
+        private set
     private var rotatedImagePaths = ArrayList<String>()
     private var currentMediaHash = media.hashCode()
     private val hasOTGConnected = activity.hasOTGConnected()
@@ -122,6 +135,12 @@ class MediaAdapter(
     private var cropThumbnails = config.cropThumbnails
     private var displayFilenames = config.displayFileNames
     private var showFileTypes = config.showThumbnailFileTypes
+    private val gridCellSize: Int by lazy {
+        val screenWidth = activity.resources.displayMetrics.widthPixels
+        val columnCount = config.mediaColumnCnt
+        val spacing = config.thumbnailSpacing
+        (screenWidth - (spacing * (columnCount + 1))) / columnCount
+    }
 
     var sorting = config.getFolderSorting(if (config.showAll) SHOW_ALL else path)
     var dateFormat = config.dateFormat
@@ -480,17 +499,40 @@ class MediaAdapter(
         activity.tryCopyMoveFilesTo(fileDirItems, isCopyOperation) {
             val destinationPath = it
             config.tempFolderPath = ""
+
+            val oldPaths = fileDirItems.map { it.path }.toMutableList() as ArrayList<String>
+            val newPaths = fileDirItems.map { "$destinationPath/${it.name}" }.toMutableList() as ArrayList<String>
+            // files verifiably exist at the destination now, stop suppressing those paths
+            newPaths.forEach { MediaTombstones.clear(it) }
+
+            if (!isCopyOperation) {
+                // MediaStore keeps the old paths after a rename until they are explicitly rescanned;
+                // block stale scans from re-importing them and tell MediaStore they are gone
+                MediaTombstones.addAll(oldPaths)
+                ensureBackgroundThread {
+                    val destinationInLibrary = activity.isFolderInGalleryScope(destinationPath)
+                    fileDirItems.forEach { item ->
+                        val newPath = "$destinationPath/${item.name}"
+                        activity.updateDBMediaPath(item.path, newPath)
+                        if (!destinationInLibrary) {
+                            // destination is outside the gallery scan scope - drop the cached row
+                            // so the item cannot linger in cached views
+                            activity.mediaDB.deleteMediumPath(newPath)
+                        }
+                    }
+                }
+                activity.rescanPaths(oldPaths)
+            }
+
             activity.applicationContext.rescanFolderMedia(destinationPath)
             activity.applicationContext.rescanFolderMedia(fileDirItems.first().getParentPath())
 
-            val newPaths = fileDirItems.map { "$destinationPath/${it.name}" }.toMutableList() as ArrayList<String>
             activity.rescanPaths(newPaths) {
                 activity.fixDateTaken(newPaths, false)
             }
 
             if (!isCopyOperation) {
                 listener?.refreshItems()
-                activity.updateFavoritePaths(fileDirItems, destinationPath)
             }
         }
     }
@@ -684,6 +726,13 @@ class MediaAdapter(
         notifyDataSetChanged()
     }
 
+    fun updateViewType(newViewType: Int) {
+        viewType = newViewType
+        isListViewType = newViewType == VIEW_TYPE_LIST
+        scrollHorizontally = if (isListViewType) false else config.scrollHorizontally
+        notifyDataSetChanged()
+    }
+
     private fun setupThumbnail(view: View, medium: Medium) {
         val isSelected = selectedKeys.contains(medium.path.hashCode())
         bindItem(view, medium).apply {
@@ -777,6 +826,7 @@ class MediaAdapter(
                 roundCorners = roundedCorners,
                 signature = medium.getKey(),
                 skipMemoryCacheAtPaths = rotatedImagePaths,
+                thumbnailSize = gridCellSize,
                 onError = {
                     mediumThumbnail.scaleType = ImageView.ScaleType.CENTER
                     mediumThumbnail.setImageDrawable(AppCompatResources.getDrawable(activity, R.drawable.ic_vector_warning_colored))
@@ -820,5 +870,23 @@ class MediaAdapter(
                 VideoItemGridBinding.bind(view).toMediaItemBinding()
             }
         }
+    }
+
+    override fun getPreloadItems(position: Int): List<String> {
+        val item = media.getOrNull(position)
+        return if (item is Medium) listOf(item.path) else emptyList()
+    }
+
+    override fun getPreloadRequestBuilder(item: String): RequestBuilder<Drawable> {
+        return Glide.with(activity)
+            .load(item)
+            .apply(
+                RequestOptions()
+                    .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
+                    .priority(Priority.LOW)
+                    .format(DecodeFormat.PREFER_ARGB_8888)
+                    .override(gridCellSize)
+                    .optionalTransform(CenterCrop())
+            )
     }
 }

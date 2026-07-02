@@ -1,3 +1,4 @@
+// Last modified: 2026-07-02--1645
 package org.fossify.gallery.activities
 
 import android.app.WallpaperManager
@@ -11,9 +12,11 @@ import androidx.core.net.toUri
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
+import com.bumptech.glide.integration.recyclerview.RecyclerViewPreloader
 import com.bumptech.glide.request.RequestOptions
 import com.bumptech.glide.request.target.SimpleTarget
 import com.bumptech.glide.request.transition.Transition
+import com.bumptech.glide.util.FixedPreloadSizeProvider
 import org.fossify.commons.dialogs.CreateNewFolderDialog
 import org.fossify.commons.dialogs.RadioGroupDialog
 import org.fossify.commons.extensions.appLockManager
@@ -86,7 +89,6 @@ import org.fossify.gallery.extensions.restoreRecycleBinPaths
 import org.fossify.gallery.extensions.showRecycleBinEmptyingDialog
 import org.fossify.gallery.extensions.showRestoreConfirmationDialog
 import org.fossify.gallery.extensions.tryDeleteFileDirItem
-import org.fossify.gallery.extensions.preloadThumbnails
 import org.fossify.gallery.extensions.updateWidgets
 import org.fossify.gallery.helpers.DIRECTORY
 import org.fossify.gallery.helpers.GET_ANY_INTENT
@@ -96,6 +98,7 @@ import org.fossify.gallery.helpers.GridSpacingItemDecoration
 import org.fossify.gallery.helpers.IS_IN_RECYCLE_BIN
 import org.fossify.gallery.helpers.MAX_COLUMN_COUNT
 import org.fossify.gallery.helpers.MediaFetcher
+import org.fossify.gallery.helpers.MediaTombstones
 import org.fossify.gallery.helpers.PATH
 import org.fossify.gallery.helpers.PICKED_PATHS
 import org.fossify.gallery.helpers.RECYCLE_BIN
@@ -142,6 +145,11 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     private var mCurrAsyncTask: GetMediaAsynctask? = null
     private var mZoomListener: MyRecyclerView.MyZoomListener? = null
 
+    private val gridCellSize: Int by lazy {
+        val screenWidth = resources.displayMetrics.widthPixels
+        screenWidth / config.mediaColumnCnt
+    }
+
     private var mStoredAnimateGifs = true
     private var mStoredCropThumbnails = true
     private var mStoredScrollHorizontally = true
@@ -169,7 +177,16 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             mAllowPickingMultiple = getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
         }
 
-        binding.mediaRefreshLayout.setOnRefreshListener { getMedia() }
+        binding.mediaRefreshLayout.setProgressBackgroundColorSchemeColor(0xFF222222.toInt())
+        binding.mediaRefreshLayout.setColorSchemeColors(0xFFFFFFFF.toInt())
+        binding.mediaRefreshLayout.setOnRefreshListener {
+            if (mIsGettingMedia) {
+                // Already loading — just dismiss the spinner
+                binding.mediaRefreshLayout.isRefreshing = false
+            } else {
+                getMedia()
+            }
+        }
         try {
             mPath = intent.getStringExtra(DIRECTORY) ?: ""
         } catch (e: Exception) {
@@ -400,17 +417,32 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             }
         }
         config.thumbnailSpacing = 13
-        binding.mediaGrid.adapter = null
+
+        val oldViewMode = getCurrentViewMode()
+        val currentViewType = config.getFolderViewType(viewTypePath)
+        val needsAdapterRecreate = (currentViewType == VIEW_TYPE_LIST) != (getMediaAdapter()?.isListViewType ?: false)
+
         setupLayoutManager()
-        getMedia()
+        if (needsAdapterRecreate) {
+            // Grid↔List requires different ViewHolder layouts — must recreate adapter
+            binding.mediaGrid.adapter = null
+            setupAdapter()
+        } else {
+            // Calendar↔Wall both use grid layouts — reuse adapter
+            getMediaAdapter()?.updateViewType(currentViewType)
+        }
+        handleGridSpacing()
         updateCalendarToggleIcon()
+
+        // Refresh data in background (handles regrouping for calendar vs wall)
+        getMedia()
     }
 
     private fun updateCalendarToggleIcon() {
         val icon = when (getCurrentViewMode()) {
-            0 -> R.drawable.ic_grid_wall_vector    // In calendar, show wall icon
-            1 -> R.drawable.ic_view_list_compact_vector  // In wall, show list icon
-            else -> R.drawable.ic_calendar_vector   // In list, show calendar icon
+            0 -> R.drawable.ic_calendar_vector          // In calendar, show calendar icon
+            1 -> R.drawable.ic_grid_wall_vector         // In wall, show wall icon
+            else -> R.drawable.ic_view_list_compact_vector  // In list, show list icon
         }
         binding.mediaMenu.requireToolbar().menu.findItem(R.id.toggle_calendar)?.setIcon(icon)
     }
@@ -606,6 +638,16 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             }.apply {
                 setupZoomListener(mZoomListener)
                 binding.mediaGrid.adapter = this
+
+                // Attach scroll-aware thumbnail preloader
+                val preloadSizeProvider = FixedPreloadSizeProvider<String>(gridCellSize, gridCellSize)
+                val preloader = RecyclerViewPreloader(
+                    Glide.with(this@MediaActivity),
+                    this,  // MediaAdapter implements PreloadModelProvider
+                    preloadSizeProvider,
+                    15  // preload 15 items ahead
+                )
+                binding.mediaGrid.addOnScrollListener(preloader)
             }
 
             binding.mediaGrid.setItemViewCacheSize(20)
@@ -1094,21 +1136,35 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         )
     }
 
-    private fun gotMedia(media: ArrayList<ThumbnailItem>, isFromCache: Boolean) {
+    private fun removeTombstonedItems(items: ArrayList<ThumbnailItem>): ArrayList<ThumbnailItem> {
+        if (MediaTombstones.isEmpty()) {
+            return items
+        }
+
+        val filtered = items.filter { it !is Medium || !MediaTombstones.isTombstoned(it.path) }
+        if (filtered.size == items.size) {
+            return items
+        }
+
+        // drop section titles whose media were all filtered out
+        val result = ArrayList<ThumbnailItem>(filtered.size)
+        filtered.forEachIndexed { index, item ->
+            val isOrphanSection = item is ThumbnailSection &&
+                (index == filtered.lastIndex || filtered[index + 1] is ThumbnailSection)
+            if (!isOrphanSection) {
+                result.add(item)
+            }
+        }
+        return result
+    }
+
+    private fun gotMedia(newMedia: ArrayList<ThumbnailItem>, isFromCache: Boolean) {
+        // scans overlapping a delete/move can still report the removed files (stale MediaStore
+        // rows or a pre-operation snapshot) - never let them back into the UI or the cache
+        val media = removeTombstonedItems(newMedia)
         mIsGettingMedia = false
         checkLastMediaChanged()
         mMedia = media
-
-        // Preload thumbnails for the first visible batch
-        if (media.isNotEmpty()) {
-            val pathsToPreload = media
-                .filterIsInstance<Medium>()
-                .take(30)
-                .map { it.path }
-            if (pathsToPreload.isNotEmpty()) {
-                ensureBackgroundThread { preloadThumbnails(pathsToPreload) }
-            }
-        }
 
         if (!isDestroyed && !isFinishing) {
             runOnUiThread {
@@ -1187,6 +1243,9 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
                 return@deleteFiles
             }
 
+            // block concurrent/stale scans from re-importing the deleted paths
+            MediaTombstones.addAll(filtered.map { it.path })
+
             mMedia.removeAll { filtered.map { it.path }.contains((it as? Medium)?.path) }
 
             // Invalidate caches so main page refreshes after deletion
@@ -1215,6 +1274,7 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
     }
 
     override fun refreshItems() {
+        MediaFetcher.invalidateCache()
         getMedia()
     }
 
