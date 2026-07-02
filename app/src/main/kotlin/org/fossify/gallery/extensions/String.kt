@@ -52,10 +52,10 @@ fun String.shouldFolderBeVisible(
 
     return if (excludedPaths.contains(this)) {
         false
-    } else if (isThisOrParentIncluded(includedPaths)) {
-        true
     } else if (isThisOrParentExcluded(excludedPaths)) {
         false
+    } else if (isThisOrParentIncluded(includedPaths)) {
+        true
     } else if (!showHidden) {
         var containsNoMediaOrDot = containsNoMedia || contains("/.")
         if (!containsNoMediaOrDot) {

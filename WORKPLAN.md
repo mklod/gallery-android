@@ -81,14 +81,28 @@ Goal: make the app look and feel more like Google Photos / "Right Gallery" in da
 - [x] Bulk DB queries for "All media" (getAllMedia() instead of per-folder scan)
 - [x] Removed Videos virtual folder (eliminated complexity)
 
-#### Brainstorm: Further Speed Optimizations
-1. **Lazy MediaStore refresh** — Show DB cache instantly, refresh from MediaStore only when app is idle or user pull-to-refreshes. Currently the full folder-by-folder rescan in `gotDirectories()` still runs on every resume even when cache is shown.
-2. **Parallel folder scanning** — The rescan loop in `gotDirectories()` processes folders sequentially. Use a thread pool (e.g. 4 concurrent) to scan multiple folders at once.
-3. **In-memory LRU directory cache** — Keep the last N directory listings in RAM so navigating back doesn't re-query Room at all.
-4. **Glide RecyclerView integration** — Use `RecyclerViewPreloader` from Glide's recyclerview-integration library for automatic ahead-of-scroll thumbnail preloading (more sophisticated than our manual preload of 30 items).
-5. **Thumbnail size optimization** — Currently loading full-resolution into grid cells. Use `.override(thumbnailSize)` to request exact grid-cell-sized decode, reducing memory and decode time.
-6. **Room WAL mode** — Enable Write-Ahead Logging on the Room database for concurrent reads during writes. Currently writes block reads.
-7. **Reduce adapter recreation** — `setupAdapter()` in MediaActivity still creates a brand new adapter when `currAdapter == null` (e.g. after view toggle). Could preserve adapter instance across config changes.
-8. **Eliminate unnecessary clones** — Multiple `.clone()` calls on media/directory lists throughout the codebase. Most are defensive copies that waste allocation time.
-9. **Profile-guided optimization (PGO)** — Enable baseline profiles for the APK so critical code paths are pre-compiled on install.
-10. **Startup tracing** — Use `androidx.tracing` + Perfetto to identify the actual slowest operations during cold start, rather than guessing.
+#### Implemented (Build 2026-03-31--0140)
+- [x] Thumbnail size optimization — `.override(gridCellSize)` for grid-cell-sized decode
+- [x] Glide RecyclerView integration — `RecyclerViewPreloader` with 15-item lookahead
+- [x] Reduce adapter recreation — adapter preserved across view toggles via `updateViewType()`
+- [x] Parallel folder scanning — 4-thread `ExecutorService` in `GetMediaAsynctask`
+- [x] Room WAL mode — `setJournalMode(WRITE_AHEAD_LOGGING)` on Room builder
+- [x] Test infrastructure — JUnit 4, Espresso, AndroidX Benchmark, benchmark-loop.sh
+
+#### Dev path notes (Build 2026-03-31--0246)
+Adapter reuse (P2) needed revision: grid↔list toggle requires adapter recreation because `onCreateViewHolder` inflates completely different layouts (PhotoItemGridBinding vs PhotoItemListBinding). ViewHolders from the recycled pool have the wrong layout. Final approach: **reuse adapter for calendar↔wall** (both grid), **recreate for grid↔list**. This still eliminates the biggest cost (calendar↔wall was the most common toggle with 4500 items in All Media).
+
+Exclude folder bug was pre-existing in upstream Fossify: `shouldFolderBeVisible()` in String.kt checked `isThisOrParentIncluded` before `isThisOrParentExcluded`. If DCIM was included and TestPhotos excluded, the include won. Swapped the order so excludes take priority over parent includes. Also added exclude filtering to `getCachedMedia()` for the SHOW_ALL bulk DB query path, which had no exclude logic at all.
+
+#### Bugfixes (Build 2026-03-31--0246)
+- [x] View toggle icon shows current view instead of next view
+- [x] List view fixed (adapter recreated on grid↔list, reused on calendar↔wall)
+- [x] Exclude folder in All Media cached query (`getCachedMedia` now filters `excludedFolders`)
+- [x] Exclude priority fix (`isThisOrParentExcluded` checked before `isThisOrParentIncluded`)
+
+#### Brainstorm: Remaining Optimizations
+1. **Lazy MediaStore refresh** — Show DB cache instantly, refresh from MediaStore only when app is idle or user pull-to-refreshes.
+2. **In-memory LRU directory cache** — Keep the last N directory listings in RAM so navigating back doesn't re-query Room at all.
+3. **Eliminate unnecessary clones** — Multiple `.clone()` calls on media/directory lists throughout the codebase.
+4. **Profile-guided optimization (PGO)** — Enable baseline profiles for the APK so critical code paths are pre-compiled on install.
+5. **Startup tracing** — Use `androidx.tracing` + Perfetto to identify actual slowest operations during cold start.

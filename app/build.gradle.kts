@@ -36,6 +36,7 @@ android {
         targetSdk = project.libs.versions.app.build.targetSDK.get().toInt()
         versionName = project.property("VERSION_NAME").toString()
         versionCode = project.property("VERSION_CODE").toString().toInt()
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -171,8 +172,15 @@ dependencies {
 
     ksp(libs.glide.compiler)
     implementation(libs.zjupure.webpdecoder)
+    implementation(libs.glide.recyclerview)
 
     implementation(libs.bundles.room)
     ksp(libs.androidx.room.compiler)
     detektPlugins(libs.compose.detekt)
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.rules)
+    androidTestImplementation(libs.androidx.benchmark.junit4)
+    androidTestImplementation(libs.espresso.core)
 }

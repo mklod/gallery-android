@@ -11,6 +11,8 @@ import org.fossify.gallery.extensions.getFavoritePaths
 import org.fossify.gallery.helpers.*
 import org.fossify.gallery.models.Medium
 import org.fossify.gallery.models.ThumbnailItem
+import java.util.Collections
+import java.util.concurrent.Executors
 
 class GetMediaAsynctask(
     val context: Context, val mPath: String, val isPickImage: Boolean = false, val isPickVideo: Boolean = false,
@@ -39,19 +41,26 @@ class GetMediaAsynctask(
 
         val media = if (showAll) {
             val foldersToScan = mediaFetcher.getFoldersToScan().filter { it != RECYCLE_BIN && it != FAVORITES && !context.config.isFolderProtected(it) }
-            val media = ArrayList<Medium>()
-            foldersToScan.forEach {
-                val newMedia = mediaFetcher.getFilesFrom(
-                    it, isPickImage, isPickVideo, getProperDateTaken, getProperLastModified, getProperFileSize,
-                    favoritePaths, getVideoDurations, lastModifieds, dateTakens.clone() as HashMap<String, Long>, null
-                )
-                media.addAll(newMedia)
+            val media = Collections.synchronizedList(ArrayList<Medium>())
+            val executor = Executors.newFixedThreadPool(4)
+            val futures = foldersToScan.map { folder ->
+                executor.submit {
+                    val folderFetcher = MediaFetcher(context)
+                    val newMedia = folderFetcher.getFilesFrom(
+                        folder, isPickImage, isPickVideo, getProperDateTaken, getProperLastModified, getProperFileSize,
+                        favoritePaths, getVideoDurations, lastModifieds, dateTakens.clone() as HashMap<String, Long>, null
+                    )
+                    media.addAll(newMedia)
+                }
             }
+            futures.forEach { it.get() }
+            executor.shutdown()
+            val mediaList = ArrayList(media)
 
             // Apply video filter for SHOW_VIDEOS virtual folder
             val filterMedia = context.config.filterMedia
             val filtered = if (filterMedia != getDefaultFileFilter()) {
-                media.filter {
+                mediaList.filter {
                     (filterMedia and TYPE_IMAGES != 0 && it.type == TYPE_IMAGES)
                         || (filterMedia and TYPE_VIDEOS != 0 && it.type == TYPE_VIDEOS)
                         || (filterMedia and TYPE_GIFS != 0 && it.type == TYPE_GIFS)
@@ -60,7 +69,7 @@ class GetMediaAsynctask(
                         || (filterMedia and TYPE_PORTRAITS != 0 && it.type == TYPE_PORTRAITS)
                 } as ArrayList<Medium>
             } else {
-                media
+                mediaList
             }
 
             mediaFetcher.sortMedia(filtered, context.config.getFolderSorting(SHOW_ALL))
