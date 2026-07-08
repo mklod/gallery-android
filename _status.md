@@ -1,7 +1,14 @@
 # Status
 
 ## Current milestone
-Stage 7: Correctness — stale delete/move fix (testing build 2026-07-02--1647)
+Stage 7: Correctness — stale delete/move fix, round 2 (testing build 2026-07-08--0312)
+
+## Last session (2026-07-08)
+- Device testing of build 2026-07-02--1647 found two remaining ghost paths:
+  1. Moved items stayed visible+selected in source folder until a slow full rescan finished → move flow now removes items from the adapter immediately (delete's mechanism: media.removeAll + removeSelectedItems, captured pre-op).
+  2. Move to out-of-scope folder: ghosts in All Media with **destination** paths ("source and dest cannot be the same" on re-move proved rows were already re-pathed). Two writers were re-creating the rows after my cleanup deleted them: `rescanFolderMediaSync(destination)` (scans/insertAlls regardless of scope — now purges cached rows for out-of-scope folders instead) and the MediaStore ContentObserver `addPathToDB` (now skips files whose parent is out of scope).
+- getCachedMedia SHOW_ALL now filters by full scan scope via `isFolderInGalleryScope` (excluded+hidden+.nomedia, memoized per parentPath) instead of excluded-config only — stray out-of-scope rows can never surface in All Media again. Preserves child-exclude-overrides-parent-include (shouldFolderBeVisible checks exclusion first) and temporarilyShowExcluded/Hidden modes.
+- "Still laggy" reported — Stage 6 perf checklist remains open; folder rescan latency is what made these ghosts so visible.
 
 ## Last session (2026-07-02)
 - Root-caused "deleted/moved items linger in gallery view" (the 2026-03-26 fix was incomplete — it only cleared MediaFetcher's 30s metadata HashMaps):

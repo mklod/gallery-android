@@ -1,4 +1,4 @@
-// Last modified: 2026-07-02--1645
+// Last modified: 2026-07-08--0312
 package org.fossify.gallery.adapters
 
 import android.content.Intent
@@ -496,6 +496,9 @@ class MediaAdapter(
             return
         }
 
+        val selectedItems = getSelectedItems()
+        val selectedPositions = getSelectedItemPositions()
+
         activity.tryCopyMoveFilesTo(fileDirItems, isCopyOperation) {
             val destinationPath = it
             config.tempFolderPath = ""
@@ -509,6 +512,16 @@ class MediaAdapter(
                 // MediaStore keeps the old paths after a rename until they are explicitly rescanned;
                 // block stale scans from re-importing them and tell MediaStore they are gone
                 MediaTombstones.addAll(oldPaths)
+
+                // drop the moved items from the grid right away, same as deletion does -
+                // waiting for the folder rescan leaves them visible (and selected) for seconds
+                activity.runOnUiThread {
+                    val movedItems = selectedItems.filter { oldPaths.contains(it.path) }
+                    media.removeAll(movedItems.toSet())
+                    listener?.updateMediaGridDecoration(media)
+                    removeSelectedItems(selectedPositions)
+                    currentMediaHash = media.hashCode()
+                }
                 ensureBackgroundThread {
                     val destinationInLibrary = activity.isFolderInGalleryScope(destinationPath)
                     fileDirItems.forEach { item ->

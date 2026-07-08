@@ -6,6 +6,31 @@
 
 ## Fork Builds (Right Gallery reskin)
 
+## Build 2026-07-08--0312
+### Changes
+Follow-up to 2026-07-02 stale-items fix, addressing the two remaining ghost paths found in device testing:
+- Move now removes the moved items from the grid **immediately** (same mechanism as delete: drop from adapter + clear selection). Previously they stayed visible and selected until a full folder rescan finished — seconds or longer on large folders.
+- Killed the two writers that re-created cache rows for files moved to folders outside the gallery scan scope (these were the All Media ghosts whose move attempt reported "source and destination are the same" — the rows were already re-pathed to the destination):
+  - `rescanFolderMedia(destination)` now purges cached rows for out-of-scope folders instead of scanning and re-inserting them
+  - the MediaStore ContentObserver (`addPathToDB`) no longer inserts rows for files whose parent folder is out of scope
+- All Media cached view now applies the full scan-scope rules (excluded + hidden + .nomedia, cached per folder) instead of only config-excluded folders, so any stray out-of-scope row can never surface again.
+
+> [!warning] Testing Checklist
+> - [ ] Multi-select and move photos out of Downloads — they vanish from the grid instantly, selection clears, no ghosts while the rescan runs
+>   - Notes:
+> - [ ] Move photos to a folder outside gallery scan scope, then immediately open All Media — no ghosts at all (previously they lingered until a background reconciliation caught up)
+>   - Notes:
+> - [ ] Same, then restart the app and check All Media again — still clean
+>   - Notes:
+> - [ ] Regression: move between two normal folders still shows the files in the destination folder and All Media
+>   - Notes:
+> - [ ] Regression: delete flows from build 2026-07-02 checklist still behave (grid + fullscreen + during cold-start scan)
+>   - Notes:
+> - [ ] Regression: hidden-folder features — "Temporarily show hidden/excluded" still shows those items in All Media
+>   - Notes:
+
+---
+
 ## Build 2026-07-02--1647
 ### Changes
 - Fixed deleted/moved items lingering in gallery views (root-cause fix, replaces the partial 2026-03-26 fix):

@@ -1,4 +1,4 @@
-// Last modified: 2026-07-02--1645
+// Last modified: 2026-07-08--0312
 package org.fossify.gallery.extensions
 
 import android.annotation.SuppressLint
@@ -536,6 +536,21 @@ fun Context.rescanFolderMedia(path: String) {
 }
 
 fun Context.rescanFolderMediaSync(path: String) {
+    // folders the gallery does not scan (excluded/hidden/.nomedia) must not get cached rows -
+    // e.g. rescanning the destination of a move-out-of-library would re-create phantom entries
+    // that cached All Media views then show. Purge any cached rows for them instead.
+    if (!path.startsWith(recycleBinPath) && !config.temporarilyShowExcluded && !isFolderInGalleryScope(path)) {
+        ensureBackgroundThread {
+            try {
+                mediaDB.getMediaFromPath(path).forEach {
+                    mediaDB.deleteMediumPath(it.path)
+                }
+            } catch (ignored: Exception) {
+            }
+        }
+        return
+    }
+
     getCachedMedia(path) { cached ->
         GetMediaAsynctask(
             context = applicationContext,
@@ -946,18 +961,15 @@ fun Context.getCachedMedia(
             // Fast path: single bulk DB query instead of per-folder scanning
             try {
                 val allMedia = mediaDB.getAllMedia()
-                val excludedPaths = if (config.temporarilyShowExcluded) {
-                    HashSet()
-                } else {
-                    config.excludedFolders
-                }
-                if (excludedPaths.isEmpty()) {
+                if (config.temporarilyShowExcluded) {
                     media.addAll(allMedia)
                 } else {
+                    // apply the full scan-scope rules (excluded/hidden/.nomedia), not just excluded
+                    // folders - stray rows for out-of-scope folders must never surface in All Media
+                    val folderInScope = HashMap<String, Boolean>()
                     media.addAll(allMedia.filter { medium ->
-                        excludedPaths.none { excluded ->
-                            medium.parentPath.equals(excluded, true) ||
-                                "${medium.parentPath}/".startsWith("$excluded/", true)
+                        folderInScope.getOrPut(medium.parentPath.lowercase()) {
+                            isFolderInGalleryScope(medium.parentPath)
                         }
                     })
                 }
@@ -1239,6 +1251,12 @@ fun Context.addPathToDB(path: String) {
 
         // the file verifiably exists again (restored, recreated or re-scanned), stop suppressing it
         MediaTombstones.clear(path)
+
+        // never cache files the gallery does not scan - the MediaStore observer fires for files
+        // just moved into excluded/hidden folders and would create phantom All Media entries
+        if (!config.temporarilyShowExcluded && !isFolderInGalleryScope(path.getParentPath())) {
+            return@ensureBackgroundThread
+        }
 
         val type = when {
             path.isVideoFast() -> TYPE_VIDEOS
