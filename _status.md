@@ -1,7 +1,14 @@
 # Status
 
 ## Current milestone
-Stage 7: Correctness — stale delete/move fix, round 2 (testing build 2026-07-08--0312)
+Stage 8: Refresh churn + selection stability + folder tiles (testing build 2026-09-17--1603)
+
+## Last session (2026-09-17)
+- Three parallel Explore subagents (Opus+Sonnet, per user request) root-caused three bugs; all fixes implemented in build 2026-09-17--1603:
+  1. **Selection kicked moments after long-press**: `MediaAdapter.updateMedia` called `finishActMode()` unconditionally on any list-hash change, and the hash changed on essentially EVERY refresh because (a) the 4-thread SHOW_ALL scan's arrival order leaked through the stable sort on tied second-granularity timestamps, (b) cached vs fresh Medium fields diverge (addPathToDB wall-clock timestamps, favorites-table drift, drained shared dateTakens cache). Fixed: selection now survives updates (path-hash keys retained, pruned only for vanished items; CAB count refreshed via toggleItemSelection since commons updateTitle is private); sortMedia got a path tiebreaker; metadata caches return copies; addPathToDB uses file timestamps.
+  2. **Spurious refresh + lag**: GetMediaAsynctask SHOW_ALL passed `android11Files = null` per folder → EVERY folder ran its own full MediaStore table query (N=20-60 per open, 40-200+ per minute with the poll). Now one shared sweep like MainActivity. Poll baseline (mLatestMediaId) now seeded in onCreate and refreshed before re-arming; mIsGettingMedia stays true until the FRESH scan lands (was cleared on cached delivery → poll could cancel/restart the in-flight scan endlessly).
+  3. **Stale folder tile after delete/move**: nothing updated the directory row before returning to main screen (move flow touched only media table); ContentObserver's `updateDirectoryPath` had no tombstone filter and could re-persist stale tmb from lagging MediaStore. Fixed: delete/move flows (grid + fullscreen) now call updateDirectoryPath(sourceParent) immediately; updateDirectoryPath filters tombstones and deletes the dir row when folder is empty.
+- Added SortDeterminismTest (Robolectric). Latent issues noted by agents but NOT fixed (deferred): favorites drift between favoritesDB and media table; static companion mMedia mutated in place by ViewPager (stale currentMediaHash); RecyclerViewPreloader leak on adapter recreation; orphaned CAB when adapter nulled on settings change; DirectoryDiffCallback doesn't compare `modified`.
 
 ## Last session (2026-07-08)
 - Device testing of build 2026-07-02--1647 found two remaining ghost paths:

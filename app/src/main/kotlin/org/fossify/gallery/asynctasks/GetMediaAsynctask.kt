@@ -1,3 +1,4 @@
+// Last modified: 2026-09-17--1603
 package org.fossify.gallery.asynctasks
 
 import android.content.Context
@@ -41,6 +42,13 @@ class GetMediaAsynctask(
 
         val media = if (showAll) {
             val foldersToScan = mediaFetcher.getFoldersToScan().filter { it != RECYCLE_BIN && it != FAVORITES && !context.config.isFolderProtected(it) }
+
+            // one full MediaStore sweep shared by all folder tasks - passing null instead made
+            // every folder run its own full-table query (N x cost) and destabilized scan timing
+            val android11Files = mediaFetcher.getAndroid11FolderMedia(
+                isPickImage, isPickVideo, favoritePaths, false, getProperDateTaken, dateTakens.clone() as HashMap<String, Long>
+            )
+
             val media = Collections.synchronizedList(ArrayList<Medium>())
             val executor = Executors.newFixedThreadPool(4)
             val futures = foldersToScan.map { folder ->
@@ -48,7 +56,7 @@ class GetMediaAsynctask(
                     val folderFetcher = MediaFetcher(context)
                     val newMedia = folderFetcher.getFilesFrom(
                         folder, isPickImage, isPickVideo, getProperDateTaken, getProperLastModified, getProperFileSize,
-                        favoritePaths, getVideoDurations, lastModifieds, dateTakens.clone() as HashMap<String, Long>, null
+                        favoritePaths, getVideoDurations, lastModifieds, dateTakens.clone() as HashMap<String, Long>, android11Files
                     )
                     media.addAll(newMedia)
                 }

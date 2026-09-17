@@ -1,4 +1,4 @@
-// Last modified: 2026-07-08--0312
+// Last modified: 2026-09-17--1603
 package org.fossify.gallery.extensions
 
 import android.annotation.SuppressLint
@@ -1275,8 +1275,10 @@ fun Context.addPathToDB(path: String) {
                 name = path.getFilenameFromPath(),
                 path = path,
                 parentPath = path.getParentPath(),
-                modified = System.currentTimeMillis(),
-                taken = System.currentTimeMillis(),
+                // real file timestamps - wall-clock "now" can never match what a rescan computes,
+                // so it guaranteed a spurious diff (and a Glide signature change) on every refresh
+                modified = File(path).lastModified(),
+                taken = File(path).lastModified(),
                 size = File(path).length(),
                 type = type,
                 videoDuration = videoDuration,
@@ -1432,6 +1434,21 @@ fun Context.updateDirectoryPath(path: String) {
         dateTakens = dateTakens,
         android11Files = null
     )
+
+    // just-deleted/moved files may still be reported by a lagging MediaStore - without this
+    // filter the ContentObserver path re-persists a stale folder thumbnail/count
+    if (!MediaTombstones.isEmpty()) {
+        curMedia.removeAll { MediaTombstones.isTombstoned(it.path) }
+    }
+
+    if (curMedia.isEmpty()) {
+        try {
+            directoryDB.deleteDirPath(path)
+        } catch (ignored: Exception) {
+        }
+        return
+    }
+
     val directory = createDirectoryFromMedia(
         path = path,
         curMedia = curMedia,

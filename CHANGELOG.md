@@ -6,6 +6,38 @@
 
 ## Fork Builds (Right Gallery reskin)
 
+## Build 2026-09-17--1603
+### Changes
+Root causes traced by three parallel investigations (selection kick, spurious refresh/lag, stale folder tile):
+- **Selection no longer kicked by background refreshes.** The adapter used to call `finishActMode()` on ANY list-hash change; now it keeps the selection (keys are path-based), drops only keys whose items actually disappeared, and ends action mode only when nothing remains selected.
+- **Deterministic media ordering.** Sort ties (second-granularity timestamps — very common) now break by path. Previously the 4-thread scan's arrival order leaked through the stable sort, so *every* refresh looked like a full reorder → grid churn, selection kicks, wasted DiffUtil work.
+- **~N× fewer MediaStore scans on All Media.** The parallel scan passed `android11Files = null` per folder, so every folder (20-60+) ran its own FULL MediaStore table query. Now one shared sweep feeds all folder tasks (same as the main screen already did). This was the single biggest lag source.
+- **3-second poll fixed:** latest-media IDs are now seeded at activity start and refreshed before re-arming the poll (they were compared while still 0L / set after the check was armed), and the "loading" guard now stays up until the FRESH scan lands — the poll could previously cancel + restart the in-flight scan in an endless churn loop.
+- **Folder tiles on the main screen update immediately** after delete/move (grid and fullscreen): the affected folder's directory row (thumbnail + count) is recomputed right away instead of waiting for the main screen's slow sequential folder loop.
+- **ContentObserver hardening:** `updateDirectoryPath` now filters tombstoned (just-deleted/moved) paths — it could re-persist a stale folder thumbnail from lagging MediaStore data — and deletes the directory row when the folder is empty. `addPathToDB` now stores real file timestamps instead of wall-clock "now" (which guaranteed a spurious diff + full thumbnail reload on every subsequent refresh).
+- **Metadata caches hardened:** the shared 30s date-taken/last-modified caches now hand out copies — one scan could previously drain the shared map mid-flight, changing timestamps between consecutive scans.
+- Added SortDeterminismTest (2 tests).
+
+> [!warning] Testing Checklist
+> - [ ] MAIN BUG: open All Media right after app launch, long-press to select images while the background scan is still running — selection survives the refresh (no kick)
+>   - Notes:
+> - [ ] Keep a selection active for 30+ seconds while idle — it stays
+>   - Notes:
+> - [ ] The grid no longer visibly "re-shuffles/flashes" a few seconds after opening a folder or All Media
+>   - Notes:
+> - [ ] All Media opens noticeably faster / scrolling less janky (N× fewer MediaStore scans)
+>   - Notes:
+> - [ ] Delete an image inside a folder, go back to main screen — folder tile thumbnail/count already correct
+>   - Notes:
+> - [ ] Move an image to an outside-scope folder, go back — folder tile already correct (no ghost thumbnail)
+>   - Notes:
+> - [ ] Regression: delete/move ghost fixes from builds 2026-07-02/2026-07-08 still hold
+>   - Notes:
+> - [ ] Regression: select items → delete them — action mode ends normally; select some, have a new photo arrive (screenshot) — selection survives, new item appears
+>   - Notes:
+
+---
+
 ## Build 2026-07-08--0312
 ### Changes
 Follow-up to 2026-07-02 stale-items fix, addressing the two remaining ghost paths found in device testing:

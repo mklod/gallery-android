@@ -1,4 +1,4 @@
-// Last modified: 2026-07-02--1645
+// Last modified: 2026-09-17--1603
 package org.fossify.gallery.activities
 
 import android.app.WallpaperManager
@@ -89,6 +89,7 @@ import org.fossify.gallery.extensions.restoreRecycleBinPaths
 import org.fossify.gallery.extensions.showRecycleBinEmptyingDialog
 import org.fossify.gallery.extensions.showRestoreConfirmationDialog
 import org.fossify.gallery.extensions.tryDeleteFileDirItem
+import org.fossify.gallery.extensions.updateDirectoryPath
 import org.fossify.gallery.extensions.updateWidgets
 import org.fossify.gallery.helpers.DIRECTORY
 import org.fossify.gallery.helpers.GET_ANY_INTENT
@@ -205,6 +206,13 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
 
         if (mShowAll) {
             registerFileUpdateListener()
+        }
+
+        // seed the latest-media ids independently of the scan cycle, so the 3s poll never
+        // compares against the uninitialized 0L values and fires a spurious rescan
+        ensureBackgroundThread {
+            mLatestMediaId = getLatestMediaId()
+            mLatestMediaDateId = getLatestMediaByDateId()
         }
 
         binding.mediaEmptyTextPlaceholder2.setOnClickListener {
@@ -1162,7 +1170,15 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
         // scans overlapping a delete/move can still report the removed files (stale MediaStore
         // rows or a pre-operation snapshot) - never let them back into the UI or the cache
         val media = removeTombstonedItems(newMedia)
-        mIsGettingMedia = false
+
+        // refresh the poll baseline BEFORE re-arming the poll, and only release the loading
+        // guard once the FRESH scan has landed - releasing it on the cached delivery let the
+        // 3s poll cancel and restart the in-flight scan in an endless churn loop
+        mLatestMediaId = getLatestMediaId()
+        mLatestMediaDateId = getLatestMediaByDateId()
+        if (!isFromCache) {
+            mIsGettingMedia = false
+        }
         checkLastMediaChanged()
         mMedia = media
 
@@ -1181,8 +1197,6 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
             }
         }
 
-        mLatestMediaId = getLatestMediaId()
-        mLatestMediaDateId = getLatestMediaByDateId()
         if (!isFromCache) {
             val mediaToInsert = mMedia
                 .filter { it is Medium && it.deletedTS == 0L }.map { it as Medium }
@@ -1258,6 +1272,13 @@ class MediaActivity : SimpleActivity(), MediaOperationsListener {
                         deleteDBPath(it.path)
                     }
                 }
+
+                // recompute the affected folders' Directory rows (tile thumbnail, count) now,
+                // so the main screen is already correct when the user navigates back
+                filtered.map { it.getParentPath() }
+                    .distinct()
+                    .filter { !it.startsWith(recycleBinPath) }
+                    .forEach { updateDirectoryPath(it) }
             }
 
             // Update UI immediately to reflect deletion

@@ -1,3 +1,4 @@
+// Last modified: 2026-09-17--1603
 package org.fossify.gallery.helpers
 
 import android.content.ContentResolver
@@ -668,7 +669,9 @@ class MediaFetcher(val context: Context) {
         val now = System.currentTimeMillis()
         val cached = cachedDateTakens
         if (cached != null && now - dateTakensCacheTime < METADATA_CACHE_TTL_MS) {
-            return cached
+            // defensive copy - getAndroid11FolderMedia removes entries from the map it is given,
+            // handing out the live cache lets one scan drain it for everyone else within the TTL
+            return cached.clone() as HashMap<String, Long>
         }
 
         val dateTakens = HashMap<String, Long>()
@@ -701,7 +704,7 @@ class MediaFetcher(val context: Context) {
 
         cachedDateTakens = dateTakens
         dateTakensCacheTime = now
-        return dateTakens
+        return dateTakens.clone() as HashMap<String, Long>
     }
 
     fun getFolderLastModifieds(folder: String): HashMap<String, Long> {
@@ -735,7 +738,7 @@ class MediaFetcher(val context: Context) {
         val now = System.currentTimeMillis()
         val cached = cachedLastModifieds
         if (cached != null && now - lastModifiedsCacheTime < METADATA_CACHE_TTL_MS) {
-            return cached
+            return cached.clone() as HashMap<String, Long>
         }
 
         val lastModifieds = HashMap<String, Long>()
@@ -762,7 +765,7 @@ class MediaFetcher(val context: Context) {
 
         cachedLastModifieds = lastModifieds
         lastModifiedsCacheTime = now
-        return lastModifieds
+        return lastModifieds.clone() as HashMap<String, Long>
     }
 
     private fun getFolderSizes(folder: String): HashMap<String, Long> {
@@ -825,6 +828,12 @@ class MediaFetcher(val context: Context) {
 
             if (sorting and SORT_DESCENDING != 0) {
                 result *= -1
+            }
+            // deterministic tie-break: modified/taken have second granularity so ties are common,
+            // and a stable sort would preserve the parallel scan's non-deterministic arrival order -
+            // every refresh would then look like a reorder (grid churn, cleared selections)
+            if (result == 0) {
+                result = o1.path.compareTo(o2.path, true)
             }
             result
         }

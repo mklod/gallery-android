@@ -1,4 +1,4 @@
-// Last modified: 2026-07-02--1645
+// Last modified: 2026-09-17--1603
 package org.fossify.gallery.activities
 
 import android.animation.Animator
@@ -125,6 +125,7 @@ import org.fossify.gallery.extensions.toggleFileVisibility
 import org.fossify.gallery.extensions.tryCopyMoveFilesTo
 import org.fossify.gallery.extensions.tryDeleteFileDirItem
 import org.fossify.gallery.extensions.updateDBMediaPath
+import org.fossify.gallery.extensions.updateDirectoryPath
 import org.fossify.gallery.extensions.updateFavorite
 import org.fossify.gallery.extensions.isFolderInGalleryScope
 import org.fossify.gallery.fragments.PhotoFragment
@@ -822,6 +823,8 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
                         // destination is outside the gallery scan scope - drop the cached row
                         mediaDB.deleteMediumPath(newPath)
                     }
+                    // keep the main screen's folder tile (thumbnail, count) in sync
+                    updateDirectoryPath(currPath.getParentPath())
                 }
                 rescanPaths(arrayListOf(currPath))
                 refreshViewPager()
@@ -1263,6 +1266,10 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
                 movePathsInRecycleBin(arrayListOf(path)) {
                     if (it) {
                         tryDeleteFileDirItem(fileDirItem, false, false) {
+                            // keep the main screen's folder tile (thumbnail, count) in sync
+                            ensureBackgroundThread {
+                                updateDirectoryPath(fileDirItem.getParentPath())
+                            }
                             mIgnoredPaths.remove(fileDirItem.path)
                             if (media.isEmpty()) {
                                 deleteDirectoryIfEmpty()
@@ -1300,6 +1307,10 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
             tryDeleteFileDirItem(fileDirItem, false, true) {
                 if (it) {
                     MediaTombstones.add(fileDirItem.path)
+                    // keep the main screen's folder tile (thumbnail, count) in sync
+                    ensureBackgroundThread {
+                        updateDirectoryPath(fileDirItem.getParentPath())
+                    }
                 }
                 mIgnoredPaths.remove(fileDirItem.path)
                 if (media.isEmpty()) {

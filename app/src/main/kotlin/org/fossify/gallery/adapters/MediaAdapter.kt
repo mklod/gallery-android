@@ -1,4 +1,4 @@
-// Last modified: 2026-07-08--0312
+// Last modified: 2026-09-17--1603
 package org.fossify.gallery.adapters
 
 import android.content.Intent
@@ -79,6 +79,7 @@ import org.fossify.gallery.extensions.showRestoreConfirmationDialog
 import org.fossify.gallery.extensions.toggleFileVisibility
 import org.fossify.gallery.extensions.tryCopyMoveFilesTo
 import org.fossify.gallery.extensions.updateDBMediaPath
+import org.fossify.gallery.extensions.updateDirectoryPath
 import org.fossify.gallery.extensions.updateFavorite
 import org.fossify.gallery.helpers.MediaTombstones
 import org.fossify.gallery.helpers.PATH
@@ -533,6 +534,12 @@ class MediaAdapter(
                             activity.mediaDB.deleteMediumPath(newPath)
                         }
                     }
+
+                    // recompute the source folders' Directory rows (tile thumbnail, count) now,
+                    // so the main screen is already correct when the user navigates back
+                    fileDirItems.map { it.getParentPath() }.distinct().forEach {
+                        activity.applicationContext.updateDirectoryPath(it)
+                    }
                 }
                 activity.rescanPaths(oldPaths)
             }
@@ -689,7 +696,24 @@ class MediaAdapter(
             media = thumbnailItems
             val diffResult = DiffUtil.calculateDiff(MediaDiffCallback(oldMedia, thumbnailItems))
             diffResult.dispatchUpdatesTo(this)
-            finishActMode()
+
+            // background refreshes must not kick an active selection: keys are path hashes, so
+            // they survive a list update - drop only keys whose items are gone, and end action
+            // mode only when nothing remains selected
+            if (selectedKeys.isNotEmpty()) {
+                val validKeys = thumbnailItems.mapNotNullTo(HashSet()) { (it as? Medium)?.path?.hashCode() }
+                val removedAny = selectedKeys.retainAll(validKeys)
+                if (selectedKeys.isEmpty()) {
+                    finishActMode()
+                } else if (removedAny) {
+                    // refresh the CAB selection count (commons updateTitle is private);
+                    // re-selecting an already selected key is a no-op apart from the title update
+                    val position = getItemKeyPosition(selectedKeys.first())
+                    if (position != -1) {
+                        toggleItemSelection(true, position, true)
+                    }
+                }
+            }
         }
     }
 
