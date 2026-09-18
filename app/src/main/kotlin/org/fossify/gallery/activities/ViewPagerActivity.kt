@@ -1,4 +1,4 @@
-// Last modified: 2026-09-17--1603
+// Last modified: 2026-09-18--0529
 package org.fossify.gallery.activities
 
 import android.animation.Animator
@@ -1387,9 +1387,27 @@ class ViewPagerActivity : BaseViewerActivity(), ViewPager.OnPageChangeListener, 
 
     private fun refreshUI(media: ArrayList<Medium>, refetchViewPagerPosition: Boolean) {
         mPrevHashcode = media.hashCode()
+
+        // preserve what the pager is showing RIGHT NOW (only once it actually has content -
+        // before the first updatePagerItems the pager sits at item 0 and must not win).
+        // Both the stale-mPos rebuild and the initial refreshViewPager(true) scan landing
+        // AFTER a quick swipe used to snap the viewer back to the originally opened image.
+        val visiblePath = if (binding.viewPager.adapter != null && !mAreSlideShowMediaVisible) {
+            mMediaFiles.getOrNull(binding.viewPager.currentItem)?.path
+        } else {
+            null
+        }
         mMediaFiles = media
 
-        if (refetchViewPagerPosition || mPos == -1) {
+        val visiblePos = if (visiblePath != null) {
+            media.indexOfFirst { it.path.equals(visiblePath, true) }
+        } else {
+            -1
+        }
+
+        if (visiblePos != -1) {
+            mPos = visiblePos
+        } else if (refetchViewPagerPosition || mPos == -1) {
             mPos = getPositionInList(media)
             if (mPos == -1) {
                 min(mPos, media.lastIndex)

@@ -6,6 +6,24 @@
 
 ## Fork Builds (Right Gallery reskin)
 
+## Build 2026-09-18--0529
+### Changes
+- (vtc) Fixed fullscreen viewer snapping back to the first image after a quick swipe: every background media delivery rebuilt the whole pager and jumped to a stale position (the initial folder scan lands seconds after opening, and `refetchViewPagerPosition` recomputed from the originally tapped path — `mPos`/`mPath` don't know about an in-flight swipe). `refreshUI` now preserves whatever image the pager is actually showing (matched by path in the new list); the original behavior remains for the first layout (before the pager has content) and slideshows.
+
+> [!warning] Testing Checklist
+> - [ ] Open All Media → tap first image → immediately swipe to the next image — it stays on image 2 (no snap-back)
+>   - Notes:
+> - [ ] Same but swipe quickly through 3-4 images right after opening — position sticks wherever you stop
+>   - Notes:
+> - [ ] Regression: tapping a photo in the middle of a folder opens THAT photo fullscreen (not the first one)
+>   - Notes:
+> - [ ] Regression: delete current image fullscreen — pager advances to the next image normally
+>   - Notes:
+> - [ ] Regression: slideshow still starts and advances normally
+>   - Notes:
+
+---
+
 ## Build 2026-09-17--1603
 ### Changes
 Root causes traced by three parallel investigations (selection kick, spurious refresh/lag, stale folder tile):
