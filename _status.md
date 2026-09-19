@@ -1,7 +1,19 @@
 # Status
 
 ## Current milestone
-Stage 8: Refresh churn + selection stability + folder tiles (testing build 2026-09-17--1603)
+Stage 8: Refresh churn + selection stability + folder tiles — IN TESTING (builds 2026-09-17--1603 + 2026-09-18--0529 installed on Pixel 7)
+
+## Last session (2026-09-18)
+- vtc-routed bug (b96dfb80): fullscreen viewer showed the next image after a quick swipe, then snapped back to the first. Cause: every background media delivery rebuilds the pager and jumps to a stored position — the initial `refreshViewPager(true)` scan lands seconds after opening and recomputed the position from the originally tapped path (`mPos` only updates when a swipe settles). Fix: `refreshUI` preserves the image the pager is actually showing (matched by path in the new list); original recompute kept for first layout (no adapter yet) and slideshows. Commit d2daee6, pushed; broker acked done.
+- Built + installed 2026-09-18--0529-viewer-snapback-fix.apk on Pixel 7 (13:01). Unit suite 10/10 green.
+- Updated WORKPLAN.md: added Stage 7 (COMPLETE) and Stage 8 (IN TESTING) sections + known-latent-issues list (was stale since Stage 6).
+
+## Next immediate task
+- User works through the two open testing checklists in CHANGELOG.md (build 2026-09-17--1603: selection survives refresh, no grid reshuffle, faster All Media, folder tiles correct; build 2026-09-18--0529: no viewer snap-back). "check feedback" when annotated.
+- If green: consider tackling the deferred latent issues (favorites drift, shared mMedia mutation, preloader leak) or resume Stage 6 perf brainstorm items.
+
+## Blockers
+- (none new) Gradle cannot build on NAS — mirror is now ~/builds/gallery (migrated from ~/Developer/gallery-local-build)
 
 ## Last session (2026-09-17)
 - Three parallel Explore subagents (Opus+Sonnet, per user request) root-caused three bugs; all fixes implemented in build 2026-09-17--1603:

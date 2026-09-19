@@ -106,3 +106,31 @@ Exclude folder bug was pre-existing in upstream Fossify: `shouldFolderBeVisible(
 3. **Eliminate unnecessary clones** — Multiple `.clone()` calls on media/directory lists throughout the codebase.
 4. **Profile-guided optimization (PGO)** — Enable baseline profiles for the APK so critical code paths are pre-compiled on install.
 5. **Startup tracing** — Use `androidx.tracing` + Perfetto to identify actual slowest operations during cold start.
+
+### Stage 7: Correctness — Stale Delete/Move (COMPLETE)
+Builds 2026-07-02--1647 and 2026-07-08--0312. Deleted/moved items no longer linger or resurrect.
+- [x] `MediaTombstones` guard (60s): just-deleted/moved paths filtered at every scan→cache write site and UI delivery; cleared on restore/reappearance
+- [x] Move purges old paths from MediaStore (`rescanPaths(oldPaths)`) and Room; fullscreen delete/move flows brought to parity
+- [x] Move to out-of-scope folder drops cached rows; `rescanFolderMedia`/`addPathToDB` no longer re-create rows for out-of-scope folders
+- [x] All Media cached view applies full scan-scope rules (excluded + hidden + .nomedia), not just config-excluded
+- [x] Move removes items from the grid immediately (same mechanism as delete)
+- [x] MediaTombstonesTest (6 unit tests)
+
+### Stage 8: Refresh Churn, Selection Stability, Folder Tiles — IN TESTING
+Builds 2026-09-17--1603 and 2026-09-18--0529. Root-caused by three parallel investigation agents.
+- [x] Selection survives background refreshes (path-keyed; pruned only for vanished items; act mode ends only when empty)
+- [x] Deterministic media ordering (path tiebreaker on sort ties — kills per-refresh reshuffle from the parallel scan's arrival order)
+- [x] One shared MediaStore sweep per All Media scan instead of one full-table query per folder (~N× lag reduction, N = folder count)
+- [x] 3s poll fixed: IDs seeded at activity start, refreshed before re-arming; loading guard held until fresh scan lands (no more cancel/restart churn)
+- [x] Folder tiles update immediately after delete/move; `updateDirectoryPath` tombstone-filtered + deletes empty-folder rows
+- [x] `addPathToDB` uses real file timestamps; 30s metadata caches return copies (no more mid-flight drain)
+- [x] Fullscreen viewer no longer snaps back after a quick swipe (refreshUI preserves the visibly-shown image across pager rebuilds)
+- [x] SortDeterminismTest (2 unit tests)
+- [ ] Device testing checklists (2026-09-17--1603 + 2026-09-18--0529) pending user feedback
+
+#### Known latent issues (found by investigation, deliberately deferred)
+- `isFavorite` drift: `Context.updateFavorite` writes only favoritesDB, not the media table — silent cache/scan disagreement
+- Static companion `MediaActivity.mMedia` is mutated in place by ViewPagerActivity (shared shallow clones → stale adapter hash)
+- `RecyclerViewPreloader` leaks: added on every adapter recreation, never removed
+- Orphaned CAB: nulling the grid adapter on settings changes drops a live action mode without finishing it
+- `DirectoryDiffCallback.areContentsTheSame` ignores `modified` — a modified-only tile correction never rebinds
